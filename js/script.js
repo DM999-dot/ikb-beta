@@ -1,1 +1,4566 @@
-const REVEAL_DELAY=2e3,SUDDEN_DEATH_DELAY=4e3;function createAudioContext(){try{const e=window.AudioContext||window.webkitAudioContext;return e?new e:null}catch{return null}}function getAudioContext(){return window.__audioCtx&&"closed"!==window.__audioCtx.state||(window.__audioCtx=createAudioContext(),"function"==typeof initAudioEngine&&(audioInitialized=!1,initAudioEngine())),window.__audioCtx}function primeAudio(){try{const e=getAudioContext();if(!e)return;const t=e.createBuffer(1,1,22050),a=e.createBufferSource();a.buffer=t,a.connect(e.destination),a.start(0)}catch{}}let audioUnlocked=!1;async function resumeAudioContext(){try{const e=getAudioContext();if(!e)return;if("suspended"===e.state||"interrupted"===e.state){await e.resume(),console.log("[WAKE CHECK]",e.state,e.currentTime);try{const t=e.createGain();t.gain.value=0;const a=e.createOscillator();a.connect(t),t.connect(e.destination),a.start(e.currentTime),a.stop(e.currentTime+.05),a.onended=()=>{try{a.disconnect()}catch{}try{t.disconnect()}catch{}}}catch(e){console.warn("Wake oscillator failed",e)}}}catch(e){console.warn("AudioContext resume failed:",e)}}function unlockAudio(){if(resumeAudioContext(),!audioUnlocked)try{primeAudio(),audioUnlocked=!0}catch(e){console.warn("Audio priming failed:",e)}}function getDefaultAcademyProgress(){return{module1Score:0,module2Score:0,module3Score:0,module4Score:0,isGraduated:!1,isPremiumUser:!1,completedLessons:[],unlockedModules:[],longestStreak:0}}document.addEventListener("visibilitychange",()=>{if("visible"===document.visibilityState){const e=getAudioContext();if(!e)return;e.resume().then(()=>{try{const t=e.createGain();t.gain.value=0;const a=e.createOscillator();a.connect(t),t.connect(e.destination),a.start(e.currentTime),a.stop(e.currentTime+.05),a.onended=()=>{try{a.disconnect()}catch{}try{t.disconnect()}catch{}}}catch(e){console.warn("Wake oscillator failed",e)}}).catch(e=>{console.warn("Resume failed",e)})}}),window.addEventListener("pageshow",()=>{resumeAudioContext()}),window.addEventListener("focus",()=>{resumeAudioContext()}),["touchstart","touchend","click"].forEach(e=>{document.addEventListener(e,unlockAudio,{passive:!0})});let suppressCompletionAudio=!1,academyProgress=getDefaultAcademyProgress();const STORAGE_KEY="ikb_save_v1";function isStorageAvailable(){try{const e="__storage_test__";return localStorage.setItem(e,e),localStorage.removeItem(e),!0}catch(e){return!1}}function loadProgressFromStorage(){if(!isStorageAvailable())return null;try{const e=localStorage.getItem(STORAGE_KEY);if(e){const t=JSON.parse(e);return{...getDefaultAcademyProgress(),...t}}return null}catch(e){return console.warn("Storage read failed:",e),null}}function saveProgressToStorage(e){if(isStorageAvailable())try{localStorage.setItem(STORAGE_KEY,JSON.stringify(e))}catch(e){console.warn("Storage write failed:",e)}}function resetAcademyProgress(){const e=document.createElement("div");e.className="lock-modal-card danger-mode",e.innerHTML='\n        <div class="modal-icon">⚠️</div>\n        <h2 class="modal-title">TERMINATE CONTRACT</h2>\n        <p class="modal-text">\n            This action will wipe the database and reset your entire Academy progress. This cannot be undone. Are you sure?\n        </p>\n        <div class="modal-buttons">\n            <button class="modal-button cancel-btn" id="cancel-reset-btn">CANCEL</button>\n            <button class="modal-button confirm-btn" id="confirm-reset-btn">CONFIRM RESET</button>\n        </div>\n    ',openModal(e,"Reset Academy Confirmation"),document.getElementById("cancel-reset-btn").addEventListener("click",closeModal),document.getElementById("confirm-reset-btn").addEventListener("click",confirmResetAcademy)}function confirmResetAcademy(){academyProgress=getDefaultAcademyProgress();try{isStorageAvailable()&&(localStorage.setItem(STORAGE_KEY,JSON.stringify(academyProgress)),localStorage.removeItem(STORAGE_KEY))}catch(e){console.warn("Storage reset failed:",e)}window.location.replace(window.location.pathname)}const sounds={whistle:new Audio("audio/football_referee-394016.mp3"),booking:new Audio("audio/little-girl-says-yellow-184028.mp3"),ejected:new Audio("audio/red-7991.mp3"),correct:new Audio("audio/crowd-cheering-in-stadium-435357.mp3"),wrong:new Audio("audio/boo-6377.mp3"),vogWarning:new Audio("audio/vog-warning.m4a"),vogYellow:new Audio("audio/vog-yellow.m4a"),vogSecondYellow:new Audio("audio/vog-second-yellow.m4a"),vogRed:new Audio("audio/vog-red.m4a"),vogVar:new Audio("audio/vog-var.m4a"),vogOffside:new Audio("audio/vog-offside.m4a"),vogGraduated:new Audio("audio/vog-graduated.m4a")};let audioCtx,stadiumDelay,stadiumFeedback,stadiumWide,stadiumReturn;Object.values(sounds).forEach(e=>{e.preload="auto"});let audioInitialized=!1;const audioBuffers={};let audioBuffersReady=!1,preloadPromise=null;async function loadAudioBuffer(e,t){try{const a=getAudioContext();if(!a)return;if("suspended"===a.state)try{await a.resume()}catch{}const o=await fetch(t);if(!o.ok)throw new Error(`HTTP ${o.status}`);const i=await o.arrayBuffer(),n=await new Promise((e,t)=>{a.decodeAudioData(i,t=>e(t),e=>t(e))});audioBuffers[e]=n}catch(t){console.warn("❌ Audio decode failed:",e,t)}}const bufferUrls={whistle:"audio/football_referee-394016.mp3",booking:"audio/little-girl-says-yellow-184028.mp3",ejected:"audio/red-7991.mp3",correct:"audio/crowd-cheering-in-stadium-435357.mp3",wrong:"audio/boo-6377.mp3",vogWarning:"audio/vog-warning.m4a",vogYellow:"audio/vog-yellow.m4a",vogSecondYellow:"audio/vog-second-yellow.m4a",vogRed:"audio/vog-red.m4a",vogVar:"audio/vog-var.m4a",vogOffside:"audio/vog-offside.m4a",vogGraduated:"audio/vog-graduated.m4a"};async function preloadAudioBuffers(){return preloadPromise||(preloadPromise=Promise.all(Object.entries(bufferUrls).map(([e,t])=>loadAudioBuffer(e,t))).then(()=>{audioBuffersReady=!0}),preloadPromise)}let audioReadyPromise=null;function safePreWarm(){audioReadyPromise||(audioReadyPromise=(async()=>{try{await preWarmAudioEngine()}catch(e){console.warn("Audio prewarm failed:",e),audioReadyPromise=null}})())}async function preWarmAudioEngine(){if(audioInitialized)return;const e=getAudioContext();if(e){if("suspended"===e.state)try{await e.resume()}catch{}try{const t=e.createGain();t.gain.setValueAtTime(0,e.currentTime);const a=e.createOscillator();a.frequency.setValueAtTime(440,e.currentTime),a.connect(t),t.connect(e.destination),a.start(),a.stop(e.currentTime+.03),a.onended=()=>{try{a.disconnect()}catch{}try{t.disconnect()}catch{}}}catch(e){console.warn("Silent unlock failed:",e)}if(await preloadAudioBuffers(),audioBuffers.whistle)try{const t=e.createBufferSource();t.buffer=audioBuffers.whistle;const a=e.createGain();a.gain.value=0,t.connect(a),a.connect(e.destination),t.start(0),t.stop(e.currentTime+.01),t.onended=()=>{try{t.disconnect()}catch{}try{a.disconnect()}catch{}}}catch(e){console.warn("Whistle prime failed:",e)}"function"==typeof initAudioEngine&&initAudioEngine(),audioInitialized=!0}}document.addEventListener("pointerdown",safePreWarm,{once:!0}),document.addEventListener("keydown",safePreWarm,{once:!0}),document.addEventListener("pointerdown",safePreWarm,{once:!0}),document.addEventListener("keydown",safePreWarm,{once:!0});const FXController={activeOverlay:null,activeSounds:new Set,activeTimelineSounds:[],registerSound(e){e&&this.activeTimelineSounds.push(e)},stopAllTimelineAudio(){this.activeTimelineSounds.forEach(e=>{if(e&&!e._isFading){try{e.pause()}catch{}try{e.currentTime=0}catch{}if(e._audioSource)try{e._audioSource.disconnect()}catch{}if(e._gainNode)try{e._gainNode.disconnect()}catch{}}}),this.activeTimelineSounds=this.activeTimelineSounds.filter(e=>e&&e._isFading)},clearOverlay(){this.activeOverlay&&(this.activeOverlay.classList.remove("active"),this.activeOverlay=null);document.querySelectorAll("#var-overlay, #offside-overlay").forEach(e=>{e.classList.remove("active","visible","var-approved")})},setOverlay(e){this.clearOverlay(),this.activeOverlay=e,e&&e.classList.add("active")},playSoundSafe(e,t={}){"function"==typeof playAcademySound&&(t.exclusive&&("function"==typeof stopAllAudio&&stopAllAudio(),this.activeSounds.clear()),playAcademySound(e,t),this.activeSounds.add(e),setTimeout(()=>{this.activeSounds.delete(e)},t.duration||2e3))}};function playStadiumFX(e){if("function"==typeof playAcademySound)switch(e){case"var-start":FXController.playSoundSafe("whistle",{volume:.6});break;case"var-build":FXController.playSoundSafe("vogVar",{stadium:!0,volume:.7});break;case"var-success":FXController.playSoundSafe("correct",{overlap:!0,volume:.45})}}const InputGuard={locked:!1,bufferTime:500,_lockId:0,canInteract(){return!this.locked},lock(e=this.bufferTime){this.locked=!0;const t=++this._lockId;setTimeout(()=>{this._lockId===t&&(this.locked=!1)},e)},unlock(){this._lockId++,this.locked=!1}};function getSpatialPan(e){if(!(e instanceof HTMLElement))return 0;const t=e.getBoundingClientRect(),a=window.innerWidth/2||1;let o=(t.left+t.width/2-a)/a;return Math.max(-1,Math.min(1,o))}const FXTimeline={running:!1,currentSequenceId:0,async play(e=[]){const t=++this.currentSequenceId;this.running=!0,void 0!==FXController&&(FXController.clearOverlay(),FXController.stopAllTimelineAudio());for(const a of e){if(!this.running||this.currentSequenceId!==t)break;try{switch(a.type){case"delay":await new Promise(e=>setTimeout(e,a.duration));break;case"sound":if("function"!=typeof playAcademySound)break;if(!1===a.blocking){playAcademySound(a.name,a.options||{});break}await new Promise(e=>{const t=a.options?.duration||2500;let o=!1;const i=()=>{o||(o=!0,e())},n=setTimeout(i,t);try{const e=playAcademySound(a.name,a.options||{});e&&"function"==typeof e.then&&e.then(()=>{clearTimeout(n),i()}).catch(()=>{i()})}catch(e){i()}});break;case"overlay":void 0!==FXController&&FXController.setOverlay(a.element);break;case"callback":"function"==typeof a.fn&&a.fn()}}catch(e){console.warn("Timeline step failed:",e)}}this.currentSequenceId===t&&(this.running=!1)},clear(){this.running=!1,this.currentSequenceId++,void 0!==FXController&&(FXController.clearOverlay(),FXController.stopAllTimelineAudio())}};function initAudioEngine(){if(audioInitialized)return;const e=getAudioContext();stadiumDelay=e.createDelay(),stadiumFeedback=e.createGain(),stadiumWide=e.createStereoPanner(),stadiumReturn=e.createGain(),stadiumDelay.delayTime.value=.08,stadiumFeedback.gain.value=.2,stadiumWide.pan.value=-.6,stadiumReturn.gain.value=.45,stadiumDelay.connect(stadiumFeedback),stadiumFeedback.connect(stadiumDelay),stadiumDelay.connect(e.destination),stadiumDelay.connect(stadiumWide),stadiumWide.connect(stadiumReturn),stadiumReturn.connect(e.destination),audioInitialized=!0}const stadiumMixer={master:1,crowd:.8,ducked:.25};let activeClones=[],duckingCount=0;function duckCrowdAudio(e=!0){duckingCount+=e?1:-1,duckingCount=Math.max(0,duckingCount);const t=getAudioContext(),a=duckingCount>0?stadiumMixer.ducked:stadiumMixer.crowd;activeClones.forEach(e=>{e._gainNode&&e._soundName&&"whistle"!==e._soundName&&!e._soundName.startsWith("vog")&&e._gainNode.gain.setTargetAtTime(a*stadiumMixer.master,t.currentTime,.1)})}function stopAllAudio(){activeClones.forEach(e=>{if(e&&!e._isFading){try{e.pause()}catch{}try{e.currentTime=0}catch{}if(e._audioSource)try{e._audioSource.disconnect()}catch{}if(e._gainNode)try{e._gainNode.disconnect()}catch{}}}),activeClones=activeClones.filter(e=>e&&e._isFading)}function fadeAndStopCrowd(e=1.5){const t=getAudioContext();t&&(activeClones=activeClones.filter(e=>e&&e._gainNode),activeClones.forEach(a=>{const o=a._gainNode;if(!o)return;a._isFading=!0;const i=t.currentTime;try{o.gain.cancelScheduledValues(i);const t=o.gain.value||1;o.gain.setValueAtTime(t,i),o.gain.linearRampToValueAtTime(0,i+e)}catch{}setTimeout(()=>{try{o.disconnect()}catch{}try{a.pause()}catch{}try{a.currentTime=0}catch{}a._isFading=!1;const e=activeClones.indexOf(a);e>-1&&activeClones.splice(e,1)},1e3*e+100)}))}function playBufferedSound(e,t={}){const a={_soundName:e,_isFading:!1,pause:()=>{},currentTime:0};return void 0!==activeClones&&Array.isArray(activeClones)&&activeClones.push(a),(async()=>{const o=getAudioContext();if(!o){const e=activeClones.indexOf(a);return void(e>-1&&activeClones.splice(e,1))}if("suspended"===o.state)try{await o.resume()}catch{}await audioReadyPromise;const i=audioBuffers[e];if(!i){console.warn("Buffer not found:",e);const t=activeClones.indexOf(a);return void(t>-1&&activeClones.splice(t,1))}const n=o.createBufferSource(),r=o.createGain(),s=o.createStereoPanner(),l=t.volume??1;s.pan.value=t.pan??0,r.gain.setValueAtTime(l,o.currentTime),n.buffer=i,n.connect(r),r.connect(s),s.connect(o.destination),t.stadium&&void 0!==stadiumDelay&&s.connect(stadiumDelay);const c=e.startsWith("vog");c&&"function"==typeof duckCrowdAudio&&duckCrowdAudio(!0),a._audioSource=n,a._gainNode=r,a._panner=s,a.pause=()=>{try{n.stop()}catch{}};let d=!1;const h=()=>{if(!d){d=!0,c&&"function"==typeof duckCrowdAudio&&duckCrowdAudio(!1);try{n.disconnect()}catch{}try{r.disconnect()}catch{}try{s.disconnect()}catch{}if(void 0!==activeClones&&Array.isArray(activeClones)){const e=activeClones.indexOf(a);e>-1&&activeClones.splice(e,1)}}};if(n.onended=h,n.start(o.currentTime),t.duration){const e=t.duration/1e3;try{n.stop(o.currentTime+e)}catch(e){console.warn("[Audio] Failed to schedule stop:",e)}}setTimeout(h,1e3*i.duration+250)})(),a}function playAcademySound(e,t={}){if(console.log("[AUDIO] Requested:",e),void 0!==audioBuffers&&audioBuffers[e])return playBufferedSound(e,t);const a=sounds[e];if(!a)return;initAudioEngine();const o=getAudioContext();if(!o)return;const i=t.volume??(e.startsWith("vog")?1:stadiumMixer.crowd),n=e.startsWith("vog"),r=t.stadium||!1;let s=null,l=!1;try{"suspended"===o.state&&o.resume(),n&&"function"==typeof duckCrowdAudio&&duckCrowdAudio(!0);const c=a.cloneNode();c.volume=1,!0===t.loop&&(c.loop=!0),c._soundName=e;const d=o.createMediaElementSource(c),h=o.createGain(),u=o.createStereoPanner();if(u.pan.value=t.pan??0,d.connect(h),h.connect(u),u.connect(o.destination),r&&void 0!==stadiumDelay&&u.connect(stadiumDelay),c._audioSource=d,c._gainNode=h,c._panner=u,h.gain.setValueAtTime(i,o.currentTime),void 0!==FXController&&"function"==typeof FXController.registerSound&&FXController.registerSound(c),void 0!==activeClones&&activeClones.push(c),t.duration){const e=t.duration/1e3,a=.25,p=o.currentTime+e,m=p-a;c._isFading=!0;const g=h.gain.value||i;h.gain.setValueAtTime(g,m),h.gain.linearRampToValueAtTime(1e-4,p),s=setTimeout(()=>{if(l)return;l=!0;try{c.pause(),c.currentTime=0}catch{}n&&"function"==typeof duckCrowdAudio&&duckCrowdAudio(!1);const e=activeClones.indexOf(c);e>-1&&activeClones.splice(e,1),c._isFading=!1;setTimeout(()=>{try{d.disconnect()}catch{}try{h.disconnect()}catch{}try{u.disconnect()}catch{}},r?3e3:200)},1e3*e+50)}return c.onended=()=>{if(l)return;l=!0,s&&clearTimeout(s),n&&"function"==typeof duckCrowdAudio&&duckCrowdAudio(!1);const e=activeClones.indexOf(c);e>-1&&activeClones.splice(e,1),c._isFading=!1,setTimeout(()=>{try{d.disconnect()}catch{}try{h.disconnect()}catch{}try{u.disconnect()}catch{}},r?3e3:200)},c.play().catch(()=>{}),c}catch(e){console.warn("Audio playback failed:",e)}}function showOffsideWarning(e,t){const a=document.getElementById("offside-overlay"),o=document.getElementById("offside-subtitle"),i=document.getElementById("offside-instruction");if(a){if(o&&(o.innerText=e),i&&(i.innerText=t),void 0===FXTimeline||"function"!=typeof FXTimeline.play)return a.classList.add("visible"),requestAnimationFrame(()=>{a.classList.add("active")}),void(void 0!==InputGuard&&InputGuard.unlock());FXTimeline.play([{type:"callback",fn:()=>{a.classList.add("visible"),requestAnimationFrame(()=>{a.classList.add("active")})}},{type:"sound",name:"whistle",options:{volume:.8}},{type:"delay",duration:100},{type:"sound",name:"vogOffside",options:{stadium:!0}},{type:"delay",duration:3e3},{type:"callback",fn:()=>{a.classList.remove("active"),setTimeout(()=>{a.classList.remove("visible"),requestAnimationFrame(()=>{void 0!==InputGuard&&InputGuard.unlock()})},300)}}])}else void 0!==InputGuard&&InputGuard.unlock()}function showScreen(e){if("function"==typeof stopShotClock&&stopShotClock(),"function"==typeof stopAllAudio&&stopAllAudio(),void 0!==FXTimeline&&FXTimeline&&"function"==typeof FXTimeline.clear)try{FXTimeline.clear()}catch(e){console.warn("FXTimeline.clear() failed:",e)}document.querySelectorAll("#var-overlay, #offside-overlay").forEach(e=>{e.classList.remove("active","visible","var-approved")}),document.querySelectorAll(".topic-screen").forEach(e=>{e.classList.remove("active"),e.classList.add("hidden")});const t=document.getElementById(e);t?(t.classList.remove("hidden"),requestAnimationFrame(()=>{t.classList.add("active"),window.scrollTo(0,0)})):console.error("CRITICAL NAVIGATION ERROR: Screen ID not found ->",e)}function handleGatewayClick(e,t){if(void 0===academyProgress)return;const a=!!academyProgress.isGraduated,o=!!academyProgress.isPremiumUser;if(2===t&&!a&&academyProgress.module1Score<14)return void showOffsideWarning("MODULE LOCKED","Pass the Foundation Exam to stay onside.");if(3===t){if(!a&&academyProgress.module2Score<14)return void showOffsideWarning("MODULE LOCKED","Pass the Pro Leagues Exam to stay onside.");if(!a&&!o)return void showLockModal("premium")}if(4===t){if(!a&&academyProgress.module3Score<14)return void showOffsideWarning("MODULE LOCKED","Pass the Elite Tactics Exam to stay onside.");if(!a&&!o)return void showLockModal("premium")}const i=`topic-module-${t}-hub`;console.log("Routing to:",i),showScreen(i)}function toggleRankModal(){const e=document.getElementById("rank-legend-modal");if(!e)return;e.classList.contains("active")?(e.classList.remove("active"),setTimeout(()=>e.classList.remove("visible"),300)):(e.classList.add("visible"),requestAnimationFrame(()=>{e.classList.add("active")}))}const module1Data={1:{title:"Football Pitch Markings"},2:{title:"Teams & Kits"},3:{title:"TV Scoreboard Decoder"},4:{title:"Positions & Roles"},5:{title:"Set Pieces & Elite Rules"},6:{title:"The Offside Rule"}},module2Data={1:{title:"What is a League?"},2:{title:"The Big Five"},3:{title:"The Premier League"},4:{title:"English Traditions"},5:{title:"Champions League"},6:{title:"The World Cup"}},module3Data={1:{title:"Modern Formations"},2:{title:"The High Press"},3:{title:"Mid-Block & Transition"},4:{title:"Set Play Mastery"},5:{title:"Total Football"}},module4Data={1:{title:"The Market"},2:{title:"Takeovers"},3:{title:"FFP & PSR"},4:{title:"Amortisation"},5:{title:"Squad Quotas"}},modules={mod1:{title:"Traditional Numbers, Positions & Basic Rules",questions:[{id:1,q:"Purpose of the penalty arc ('D')?",options:["Keeps players 10 yards from the spot","Defines the goalkeeper's handling zone","Indicates where indirect free kicks are taken","Determines the strict offside boundary"],correct:"Keeps players 10 yards from the spot",explanation:"The penalty arc ensures players remain 10 yards from the penalty mark and outside the penalty area until the ball is kicked."},{id:2,q:"Where are goal kicks taken from?",options:["Inside the 6-yard box","Penalty spot","Corner arc","Centre circle"],correct:"Inside the 6-yard box",explanation:"The goal area (6-yard box) is primarily used for goal kicks and for positioning certain free kicks inside the penalty area."},{id:3,q:"What line separates the two halves of the pitch?",options:["The Halfway Line","The Goal Line","The Touchline","The 18-Yard Line"],correct:"The Halfway Line",explanation:"The Halfway Line divides the pitch. Crucially, you cannot be offside in your own half."},{id:4,q:"What area allows the goalkeeper to legally use their hands?",options:["The Penalty Area","The 6-Yard Box Only","The Centre Circle","The Defensive Half"],correct:"The Penalty Area",explanation:"The goalkeeper is allowed to use their hands anywhere inside their own Penalty Area."},{id:5,q:"Where does every half and every goal restart from?",options:["The Centre Spot","The Goalkeeper's Box","The Halfway Line","The Sideline"],correct:"The Centre Spot",explanation:"Play restarts from the Centre Spot at the beginning of each half and after every goal."},{id:6,q:"What are the boundaries on the side of the pitch called?",options:["Touchlines","Goal Lines","By-lines","Half-spaces"],correct:"Touchlines",explanation:"The side boundaries are called Touchlines. The ball is out of play when it fully crosses them."},{id:7,q:"If the ball is resting directly on top of the touchline or goal line, what is its status?",options:["It is still in play","It is out of bounds","Play is paused for a referee drop-ball","It results in an immediate throw-in"],correct:"It is still in play",explanation:"Every line on the pitch is considered part of the area it defines. A ball on the line is still in play."},{id:8,q:"What is the boundary called where the ball is out when it fully crosses behind the goal?",options:["Goal Line","Touchline","Halfway Line","Penalty Line"],correct:"Goal Line",explanation:"The Goal Line runs along the width of the pitch behind the goals."},{id:9,q:"Which position on the field is traditionally associated with the Number 1 shirt?",options:["Defence","Midfield","Attack","Goalkeeper"],correct:"Goalkeeper",explanation:"The #1 is traditionally the goalkeeper and is the only player permitted to handle the ball inside their own penalty area."},{id:10,q:"Which numbers are traditionally defenders?",options:["2, 3, 4, 5","6, 8, 10","7, 9, 11","1, 2, 3, 4"],correct:"2, 3, 4, 5",explanation:"Numbers 2, 3, 4, and 5 are defenders responsible for protecting the goal and stopping opposition attacks."},{id:11,q:"Which of the following shirt numbers are traditionally assigned to midfielders?",options:["6, 8, 10","2, 3, 4","7, 9, 11","1, 5, 6"],correct:"6, 8, 10",explanation:"Numbers 6, 8, and 10 operate in midfield, linking defence and attack while controlling possession."},{id:12,q:"Which set of shirt numbers is traditionally associated with attacking players?",options:["7, 9, 11","6, 8, 10","2, 3, 4, 5","1, 2, 3"],correct:"7, 9, 11",explanation:"Numbers 7, 9, and 11 are attacking players focused on creating and scoring goals."},{id:13,q:"What is the traditional role of Number 5?",options:["Centre-back","Full-back","Striker","Playmaker"],correct:"Centre-back",explanation:"Number 5 is traditionally a centre-back, positioned centrally in defence to mark strikers and clear danger."},{id:14,q:"What is the traditional tactical role of a player wearing the Number 9 shirt?",options:["Striker","Goalkeeper","Midfielder","Full-back"],correct:"Striker",explanation:"Number 9 is the striker, positioned highest up the pitch to score goals."},{id:15,q:"What is the traditional tactical role of a player wearing the Number 10 shirt?",options:["Playmaker","Defender","Winger","Goalkeeper"],correct:"Playmaker",explanation:"Number 10 is traditionally the playmaker, operating behind the striker to create goal-scoring chances."},{id:16,q:"Which numbers are full-backs?",options:["2 & 3","4 & 5","6 & 8","7 & 11"],correct:"2 & 3",explanation:"Numbers 2 and 3 are traditionally full-backs, positioned on the right and left sides of defence."},{id:17,q:"What is the official three-letter scoreboard abbreviation used to represent Manchester United?",options:["MUN","MCI","ARS","LIV"],correct:"MUN",explanation:"MUN is the official three-letter abbreviation used to represent Manchester United."},{id:18,q:"What is the official three-letter scoreboard abbreviation used to represent Manchester City?",options:["MCI","MUN","CHE","TOT"],correct:"MCI",explanation:"MCI is the official three-letter abbreviation used to represent Manchester City."},{id:19,q:"What is the official three-letter scoreboard abbreviation used to represent Arsenal?",options:["ARS","LIV","CHE","TOT"],correct:"ARS",explanation:"ARS is the standard abbreviation used to represent Arsenal Football Club."},{id:20,q:"What is the official three-letter scoreboard abbreviation used to represent Liverpool FC?",options:["LIV","ARS","CHE","TOT"],correct:"LIV",explanation:"LIV is the scoreboard abbreviation used to represent Liverpool FC."},{id:21,q:"What is the official three-letter scoreboard abbreviation used to represent Chelsea FC?",options:["CHE","LIV","ARS","TOT"],correct:"CHE",explanation:"CHE is the common three-letter abbreviation for Chelsea FC."},{id:22,q:"What is the official three-letter scoreboard abbreviation used to represent Real Madrid?",options:["RMA","BAR","ATM","PSG"],correct:"RMA",explanation:"RMA is the common abbreviation used for Real Madrid."},{id:23,q:"What is the official three-letter scoreboard abbreviation used to represent FC Barcelona?",options:["BAR","RMA","ATM","PSG"],correct:"BAR",explanation:"BAR is the common abbreviation used to represent FC Barcelona."},{id:24,q:"What is the official three-letter scoreboard abbreviation used to represent Paris Saint-Germain?",options:["PSG","RMA","BAR","ATM"],correct:"PSG",explanation:"PSG stands for Paris Saint-Germain, the French club based in Paris."},{id:25,q:"If a television scoreboard reads 'LIV 2-0 MCI', what does this format officially indicate about the match venue?",options:["Liverpool is home","Manchester City is home","It’s a neutral stadium","Score is unknown"],correct:"Liverpool is home",explanation:"On scoreboards, the home team is always listed first. 'LIV 2-0 MCI' means Liverpool is at home."},{id:26,q:"A 4-4-2 formation includes how many midfielders?",options:["4","3","2","5"],correct:"4",explanation:"A 4-4-2 formation includes four midfielders positioned across the middle of the pitch."},{id:27,q:"How many defenders are used in a 5-3-2 formation?",options:["5","4","3","2"],correct:"5",explanation:"The 5-3-2 formation uses five defenders, making it one of the more defensive tactical setups."},{id:28,q:"How many forwards in a 4-3-3 formation?",options:["3","2","4","1"],correct:"3",explanation:"A 4-3-3 formation features three forwards and is widely known as an attacking system."},{id:29,q:"How many midfielders are in a 4-2-3-1 formation?",options:["5","4","3","6"],correct:"5",explanation:"A 4-2-3-1 formation contains five midfielders: two deeper and three attacking midfielders."},{id:30,q:"What is the central forward in a 4-3-3 is called?",options:["Striker","Playmaker","Centre-back","Winger"],correct:"Striker",explanation:"In a 4-3-3, the central forward is called the striker and leads the attacking line."},{id:31,q:"Yamal & Olise were used as examples of what type of players?",options:["Technical, creative wide playmakers","Powerful box-to-box midfielders","Centre-backs","Strikers"],correct:"Technical, creative wide playmakers",explanation:"Yamal & Olise were used as examples of technical, creative wide playmakers in the lesson."},{id:32,q:"Bellingham & Rice were used as examples of what type of midfielders?",options:["Powerful box-to-box midfielders","Creative playmakers","Wingers","Strikers"],correct:"Powerful box-to-box midfielders",explanation:"Bellingham & Rice were used as examples of powerful box-to-box midfielders who cover large areas of the pitch."},{id:33,q:"According to the Academy's breakdown of the 'Transformer' system, what is the primary defensive structural shift performed by wing-backs in a 3-at-the-back formation?",options:["They drop deep to form a five-man defensive block","They stay pinned high as traditional wingers","They permanently invert into the central midfield","They push up to man-mark the opposing centre-backs"],correct:"They drop deep to form a five-man defensive block",explanation:"In a 3-at-the-back system, wing-backs drop into defensive positions when out of possession, transforming the shape into a solid back five."},{id:34,q:"What is a free shot from 12 yards called?",options:["Penalty","Corner","Goal kick","Direct free kick"],correct:"Penalty",explanation:"A penalty is a direct free shot taken from 12 yards with only the goalkeeper defending."},{id:35,q:"When the defending team last touches the ball over the goal line, what is awarded?",options:["Corner","Goal kick","Throw-in","Indirect free kick"],correct:"Corner",explanation:"A corner is awarded when the defending team last touches the ball before it crosses their own goal line."},{id:36,q:"During a free kick outside the box, how can defenders prevent a shot?",options:["Form a defensive wall at least 10 yards away","Position a single blocker exactly 5 yards from the ball","Deploy a player to stand inside the penalty arc","Charge the kicker the moment the referee blows the whistle"],correct:"Form a defensive wall at least 10 yards away",explanation:"Defenders may stand 10 yards away in a wall to block a direct shot from a free kick outside the penalty area."},{id:37,q:"What is awarded if a foul occurs inside the penalty area?",options:["Penalty","Direct free kick","Indirect free kick","Throw-in"],correct:"Penalty",explanation:"A penalty is awarded when a foul is committed by the defending team inside their own penalty area."},{id:38,q:"How far must a defensive wall stand from the ball during a free kick?",options:["10 yards","5 yards","12 yards","8 yards"],correct:"10 yards",explanation:"Defensive walls must stand at least 10 yards away from the ball during a free kick."},{id:39,q:"Can a player score directly from a corner kick?",options:["Yes, but only against the opponent","No","Yes, including own goal","Only from indirect corner"],correct:"Yes, but only against the opponent",explanation:"A goal can be scored directly from a corner kick, but only into the opponent’s goal. If the ball enters the kicker’s own goal untouched, a corner is awarded to the opponents."},{id:40,q:"During a throw-in, where must the feet be?",options:["On or behind the touchline","At least one foot must be entirely inside the field of play","Both feet must step entirely over the line onto the pitch","Foot placement is irrelevant as long as the throw is two-handed"],correct:"On or behind the touchline",explanation:"During a throw-in, both feet must be on or behind the touchline when releasing the ball."},{id:41,q:"What is awarded when the attacking team last touches the ball and it crosses the defending team's goal line?",options:["Goal kick","Corner","Throw-in","Indirect free kick"],correct:"Goal kick",explanation:"A goal kick is awarded when the attacking team last touches the ball before it crosses the defending team’s goal line."},{id:42,q:"When forming a defensive wall for a free kick, where must the wall stand relative to the penalty area?",options:["Outside the penalty area and 10 yards from the ball","Inside the penalty area","On the goal line","At the corner arc"],correct:"Outside the penalty area and 10 yards from the ball",explanation:"During a free kick outside the penalty area, the defensive wall must remain outside the penalty area and at least 10 yards from the ball."},{id:43,q:"According to the Academy's definition, which parts of a player's body can place them in an offside position?",options:["Head, body, or feet","Only the feet","Any part of the body, including the hands and arms","Only the torso and head"],correct:"Head, body, or feet",explanation:"The offside boundary is judged by any part of the head, body, or feet that is nearer to the opponent's goal line. Hands and arms are excluded."},{id:44,q:"Can a player be offside in their own half?",options:["Yes","No"],correct:"No",explanation:"A player cannot be in an offside position while in their own half of the pitch."},{id:45,q:"When is a player in an offside position penalized?",options:["Only if interfering with play, opponent, or gaining advantage","Always if ahead of last defender","When in the centre circle","If in own half"],correct:"Only if interfering with play, opponent, or gaining advantage",explanation:"A player in an offside position is penalized only if they interfere with play, an opponent, or gain an advantage."},{id:46,q:"Is there offside when receiving the ball directly from a corner?",options:["No","Yes","Only in the box","Only if scoring"],correct:"No",explanation:"There is no offside offence when receiving the ball directly from a corner kick."},{id:47,q:"What does VAR stand for?",options:["Video Assistant Referee","Virtual Assistant Replay","Verified Action Review","Video Analysis Rule"],correct:"Video Assistant Referee",explanation:"VAR stands for Video Assistant Referee, a system used to review clear and obvious errors in decisions."},{id:48,q:"What is the core definition of an offside position?",options:["Nearer to the goal line than the ball and 2nd-to-last opponent","Standing in the penalty box","Ahead of the goalkeeper","Past the halfway line"],correct:"Nearer to the goal line than the ball and 2nd-to-last opponent",explanation:"A player is in an offside position if any part of their head, body, or feet is nearer to the opponent's goal line than both the ball and the second-last opponent."},{id:49,q:"From which of the following restarts is it impossible to be offside?",options:["Goal Kick, Corner Kick, or Throw-In","Direct Free Kick","Indirect Free Kick","Penalty Kick"],correct:"Goal Kick, Corner Kick, or Throw-In",explanation:"The Laws of the Game specifically exempt Goal Kicks, Corner Kicks, and Throw-Ins from the offside rule."},{id:50,q:"How is offside checked for extreme accuracy in modern elite football?",options:["VAR using digital lines","The referee's stopwatch","Player sensors","Goal-line technology"],correct:"VAR using digital lines",explanation:"Modern football uses VAR to check offsides using digital lines, often measuring by millimetres to ensure accuracy."}]},mod2:{title:"Leagues & Cups",questions:[{id:1,q:"How many points are awarded for a WIN in modern football?",options:["1 Point","2 Points","3 Points","4 Points"],correct:"3 Points",explanation:"A win awards 3 points. This was changed from 2 points in 1981 to encourage attacking play."},{id:2,q:"How many points do teams receive for a DRAW?",options:["0 Points","1 Point","2 Points","3 Points"],correct:"1 Point",explanation:"A draw is worth 1 point for each team (shared spoils)."},{id:3,q:"How many points does a team get for a LOSS?",options:["-1 Point","0 Points","1 Point","Half a point"],correct:"0 Points",explanation:"A loss results in 0 points for the defeated team."},{id:4,q:"Why was the points system changed from 2 to 3 points in 1981?",options:["To encourage attacking play and risk-taking","To increase television broadcasting revenue","To align with international FIFA tournament standards","To give a mathematical advantage to the home team"],correct:"To encourage attacking play and risk-taking",explanation:"The change incentivized teams to risk losing in order to win, rather than settling for a draw."},{id:5,q:"MATH CHALLENGE: If a team wins 3 games, how many points do they have?",options:["6","9","3","12"],correct:"9",explanation:"3 wins x 3 points = 9 points."},{id:6,q:"MATH CHALLENGE: If a team draws 5 games, how many points do they have?",options:["1","3","5","15"],correct:"5",explanation:"5 draws x 1 point = 5 points."},{id:7,q:"MATH CHALLENGE: Team A has 2 wins, 1 draw, and 1 loss. Total points?",options:["6","7","8","9"],correct:"7",explanation:"(2 wins x 3) + (1 draw x 1) + (1 loss x 0) = 7 points."},{id:8,q:"MATH CHALLENGE: A team plays 10 games. They win 1 and lose 9. Points?",options:["1","3","10","0"],correct:"3",explanation:"1 win = 3 points. The 9 losses add nothing."},{id:9,q:"In a standard 20-team league, finishing in the 'Top 4' typically earns what?",options:["Champions League Qualification","Automatic entry to the FIFA Club World Cup","Qualification for the Europa Conference League","A financial bonus but no European football"],correct:"Champions League Qualification",explanation:"The Top 4 spots usually grant entry into the next season's Champions League."},{id:10,q:"What happens to the teams that finish in the bottom 3 spots of the Premier League?",options:["They get a fine","They are Relegated","They play a playoff","They lose points"],correct:"They are Relegated",explanation:"The bottom 3 teams drop down to the division below (The Championship)."},{id:11,q:"According to the 2023/24 Premier League table analyzed in the Academy, who won the title with 91 points?",options:["Arsenal","Liverpool","Man City","Aston Villa"],correct:"Man City",explanation:"Man City were crowned champions with 91 points."},{id:12,q:"According to the 2023/24 Premier League table analyzed in the Academy, which team finished 2nd with 89 points?",options:["Liverpool","Arsenal","Man City","Tottenham"],correct:"Arsenal",explanation:"Arsenal finished as runners-up with 89 points."},{id:13,q:"According to the 2023/24 Premier League table analyzed in the Academy, which of these teams was relegated?",options:["Aston Villa","Luton Town","Crystal Palace","Wolves"],correct:"Luton Town",explanation:"Luton Town finished 18th and were relegated."},{id:14,q:"What is the status of a team finishing 12th in a 20-team league?",options:["Champions","Relegated","Mid-Table (Safe)","Qualified for Europe"],correct:"Mid-Table (Safe)",explanation:"Positions in the middle (like 12th) are safe from relegation but do not qualify for Europe."},{id:15,q:"MOGUL MATH: Your club has recorded 4 wins, 2 draws, and 4 losses in their first 10 matches. What is your current points total?",options:["10 Points","12 Points","14 Points","16 Points"],correct:"14 Points",explanation:"4 wins (12 points) + 2 draws (2 points) + 4 losses (0 points) = 14 total points."},{id:16,q:"MATH CHALLENGE: A team goes 'Invincible' (38 games, 0 losses) but draws 38 times. Points?",options:["38","114","90","76"],correct:"38",explanation:"38 draws x 1 point = 38 points. Being invincible doesn't guarantee a high score if you don't win!"},{id:17,q:"MATH CHALLENGE: To reach 100 points, how many wins (min) do you need if you never draw?",options:["30","33","34","38"],correct:"34",explanation:"33 wins = 99 pts. You need 34 wins (102 pts) to break the 100 barrier without draws."},{id:18,q:"Which two clubs hold the record for the most English top-flight titles (20)?",options:["Arsenal & Chelsea","Man Utd & Liverpool","Man City & Everton","Leeds & Villa"],correct:"Man Utd & Liverpool",explanation:"Both Manchester United and Liverpool have won 20 English league titles."},{id:19,q:"Which club holds the record for the most Spanish La Liga titles (36)?",options:["Barcelona","Real Madrid","Atletico Madrid","Valencia"],correct:"Real Madrid",explanation:"Real Madrid is the most successful club in Spanish history with 36 titles."},{id:20,q:"Which club dominates the German Bundesliga with 34 titles?",options:["Dortmund","Bayern Munich","Leverkusen","Hamburg"],correct:"Bayern Munich",explanation:"Bayern Munich is the undisputed king of German football."},{id:21,q:"Which club holds the record for the most Italian Serie A titles (36)?",options:["AC Milan","Inter Milan","Juventus","Napoli"],correct:"Juventus",explanation:"Juventus has won the most Serie A championships."},{id:22,q:"Which French club has the most Ligue 1 titles (13)?",options:["Marseille","Saint-Étienne","PSG","Monaco"],correct:"PSG",explanation:"Paris Saint-Germain leads the French all-time table with 13 titles."},{id:23,q:"Why is the Premier League widely considered the 'Global Super League'?",options:["It features a 24-team structure","It is the only league to utilize a winter break","It generates vastly superior global television revenue","It is historically the oldest league in Europe"],correct:"It generates vastly superior global television revenue",explanation:"Massive TV revenue allows the PL to attract the best global talent and outspend its European rivals."},{id:24,q:"What defines the '50+1 Rule' in the German Bundesliga?",options:["Club members (the fans) must retain a majority of the voting rights","A single corporate investor must hold 51% of the financial shares","The local government subsidizes 51% of the stadium's operating costs","Clubs are required to spend 51% of their revenue on academy development"],correct:"Club members (the fans) must retain a majority of the voting rights",explanation:"This rule ensures fans keep control of the club, preventing complete corporate takeovers and keeping ticket prices low."},{id:25,q:"Which league was the world's #1 from the 80s to the early 2000s?",options:["Premier League","Serie A","La Liga","Bundesliga"],correct:"Serie A",explanation:"Italian football was the defensive and tactical peak of the world in that era."},{id:26,q:"What historical scandal ended Serie A's dominance in 2006?",options:["The sudden collapse of domestic television rights","Calciopoli (Widespread Match-Fixing)","The bankruptcy of major club sponsors","A mass exodus of players to the newly formed Premier League"],correct:"Calciopoli (Widespread Match-Fixing)",explanation:"The Calciopoli scandal saw Juventus relegated and irreparably damaged the league's global reputation and financial power."},{id:27,q:"Ligue 1 is known as a 'hotbed' for what?",options:["Old goalkeepers","Young French talent","Defensive tactics","Rich owners"],correct:"Young French talent",explanation:"France produces an incredible volume of elite young players like Mbappé."},{id:28,q:"Which Spanish style dominated the 2010s?",options:["Kick and Rush","Tiki-Taka","Catenaccio","Long Ball"],correct:"Tiki-Taka",explanation:"The technical, possession-based 'Tiki-Taka' defined Spanish dominance."},{id:29,q:"Why did European giants attempt to form a breakaway 'Super League' in 2021?",options:["To force FIFA to reschedule the World Cup","To combat the overwhelming financial dominance of the Premier League","To avoid playing matches on weekends","To establish a uniform set of tactical rules across the continent"],correct:"To combat the overwhelming financial dominance of the Premier League",explanation:"The financial gap between the PL and the rest of Europe drove clubs like Real Madrid and Juventus to attempt a breakaway to secure guaranteed revenue."},{id:30,q:"Which French player won the 2025 Ballon d'Or according to the lesson?",options:["Mbappé","Ousmane Dembélé","Griezmann","Saliba"],correct:"Ousmane Dembélé",explanation:"The lesson cites Ousmane Dembélé as the 2025 winner."},{id:31,q:"Which Spanish clubs defined La Liga's complete dominance of Europe in the 2010s?",options:["Real Madrid, Barcelona, Sevilla & Atletico","Just Real Madrid & Barcelona","Valencia & Villarreal","Bilbao & Sociedad"],correct:"Real Madrid, Barcelona, Sevilla & Atletico",explanation:"These four clubs won multiple Champions League and Europa League titles during that decade."},{id:32,q:"According to the all-time English titles list, which club sits 3rd behind Man Utd and Liverpool with 13 titles?",options:["Chelsea","Man City","Arsenal","Everton"],correct:"Arsenal (13)",explanation:"Arsenal is historically the third most successful English club with 13 league titles."},{id:33,q:"Saint-Étienne is historically significant in which country?",options:["England","France","Germany","Italy"],correct:"France",explanation:"Saint-Étienne has 10 titles, historically one of France's giants."},{id:34,q:"Which Italian club has 19 titles?",options:["Juventus","AC Milan","Roma","Lazio"],correct:"AC Milan",explanation:"AC Milan sits on 19 titles, just behind Inter (20) and Juve (36)."},{id:35,q:"In what year was the Premier League formed?",options:["1988","1992","2000","1995"],correct:"1992",explanation:"The top clubs broke away from the Football League in 1992."},{id:36,q:"What was the main reason for the 1992 breakaway?",options:["To negotiate independent TV deals and retain the broadcasting revenue","To reduce the league size to 18 teams and ease fixture congestion","To bypass UEFA regulations regarding foreign player quotas","To create a closed league where the founding members could not be relegated"],correct:"To negotiate independent TV deals and retain the broadcasting revenue",explanation:"Clubs wanted to keep the broadcast revenue rather than sharing it with lower leagues."},{id:37,q:"Which manager created the 'Dynasty' at Manchester United?",options:["Arsène Wenger","Jose Mourinho","Sir Alex Ferguson","Pep Guardiola"],correct:"Sir Alex Ferguson",explanation:"Ferguson won a record 13 Premier League titles."},{id:38,q:"Who were 'The Invincibles'?",options:["Man City 2018","Arsenal 2003-04","Chelsea 2005","Liverpool 2020"],correct:"Arsenal 2003-04",explanation:"Arsenal went the entire 38-game season without a single defeat."},{id:39,q:"Which team holds the record for conceding the fewest goals (15) in a season?",options:["Arsenal","Chelsea","Man Utd","Liverpool"],correct:"Chelsea",explanation:"Chelsea's 'The Wall' defence in 2004-05 conceded just 15 goals."},{id:40,q:"Which team won the league at 5,000-to-1 odds?",options:["Blackburn","Leicester City","Tottenham","Leeds"],correct:"Leicester City",explanation:"Leicester City's 2016 win is considered the greatest miracle in sports history."},{id:41,q:"Which team broke the 100-point barrier to become 'The Centurions'?",options:["Man City","Liverpool","Chelsea","Arsenal"],correct:"Man City",explanation:"Man City (2017-18) were the first to reach 100 points."},{id:42,q:"Who is the Premier League's all-time leading goalscorer?",options:["Harry Kane","Alan Shearer","Wayne Rooney","Thierry Henry"],correct:"Alan Shearer",explanation:"Alan Shearer scored 260 goals."},{id:43,q:"How many goals did Alan Shearer score in the Premier League?",options:["200","208","260","300"],correct:"260",explanation:"Shearer's record stands at 260 goals."},{id:44,q:"As of the modern era, only three players have broken the legendary '200 Goal' barrier in the Premier League. Which of the following elite strikers is NOT in the 200-Goal Club?",options:["Thierry Henry","Alan Shearer","Wayne Rooney","Harry Kane"],correct:"Thierry Henry",explanation:"Shearer (260), Kane (213), and Rooney (208) are the only three players to break the 200-goal milestone. Thierry Henry finished his legendary Arsenal career with 175."},{id:45,q:"How many games did it take Erling Haaland to score 100 goals?",options:["150","111","90","200"],correct:"111",explanation:"He set the record by reaching 100 goals in just 111 matches."},{id:46,q:"What is the realistic points target for a modern Champion?",options:["75+","80+","90+","100+"],correct:"90+",explanation:"The Guardiola-Klopp era raised the standard, making 90+ points the new benchmark."},{id:47,q:"Who sits 2nd on the all-time scoring list with 213 goals?",options:["Wayne Rooney","Harry Kane","Andy Cole","Sergio Aguero"],correct:"Harry Kane",explanation:"Harry Kane is second with 213 goals."},{id:48,q:"Which broadcaster funded the PL revolution in 1992?",options:["BBC","ITV","Sky Sports","Amazon"],correct:"Sky Sports",explanation:"The Sky Sports TV deal was the catalyst for the league's wealth."},{id:49,q:"Sir Alex Ferguson defined the Premier League era by winning a record number of titles. How many?",options:["10","13","15","20"],correct:"13",explanation:"The lesson states Sir Alex Ferguson won a record 13 titles, creating the Man Utd dynasty."},{id:50,q:"Which two managers defined the 'Modern Era' of high standards?",options:["Mourinho & Wenger","Guardiola & Klopp","Ferguson & Dalglish","Arteta & Emery"],correct:"Guardiola & Klopp",explanation:"Their rivalry pushed the required points total to near-perfection."},{id:51,q:"Wayne Rooney scored how many PL goals?",options:["180","208","260","150"],correct:"208",explanation:"Rooney is 3rd all-time with 208 goals."},{id:52,q:"In what year was the FA Cup founded?",options:["1888","1992","1871","1901"],correct:"1871",explanation:"The FA Cup is the oldest national football competition, founded in 1871."},{id:53,q:"How is the FA Cup format described compared to the League?",options:["A Marathon","A Sprint","A League","A Friendly"],correct:"A Sprint",explanation:"The League is a marathon; the Cup is a knockout sprint."},{id:54,q:"What is a 'Giant Killing'?",options:["A lower-league team eliminating a top-flight club in a knockout cup","A team winning the league title against extreme preseason odds","A heavily favored team winning by a margin of 5 or more goals","A club bankrupting a larger rival through aggressive financial spending"],correct:"A lower-league team eliminating a top-flight club in a knockout cup",explanation:"The magic of the cup occurs when lower-league or amateur teams defy the odds to defeat elite professional giants."},{id:55,q:"How many teams (approx) enter the FA Cup?",options:["20","92","700+","100"],correct:"700+",explanation:"Over 700 teams from 10 tiers of English football compete."},{id:56,q:"Which club holds the record for most FA Cup wins (14)?",options:["Man Utd","Liverpool","Arsenal","Chelsea"],correct:"Arsenal",explanation:"Arsenal are the record holders with 14 trophies."},{id:57,q:"Where is the FA Cup Final traditionally played?",options:["Old Trafford","Wembley Stadium","Anfield","The Emirates"],correct:"Wembley Stadium",explanation:"Wembley is the 'Home of Football' and hosts the final."},{id:58,q:"Which team was known as the 'Crazy Gang'?",options:["Liverpool","Wimbledon","Millwall","Leeds"],correct:"Wimbledon",explanation:"Wimbledon's aggressive team was nicknamed the Crazy Gang."},{id:59,q:"Who did Wimbledon beat in the 1988 FA Cup Final upset?",options:["Man Utd","Arsenal","Liverpool","Everton"],correct:"Liverpool",explanation:"They shocked the 'unbeatable' Liverpool 1-0."},{id:60,q:"What is 'The Double'?",options:["Winning 2 games in a row","Winning the League and FA Cup in one season","Scoring 2 goals","Beating your rival twice"],correct:"Winning the League and FA Cup in one season",explanation:"Winning the two biggest domestic prizes is 'The Double'."},{id:61,q:"Who competes in the League Cup (Carabao Cup)?",options:["All 700 teams","Only the 92 professional clubs","Only the Premier League","Only amateurs"],correct:"Only the 92 professional clubs",explanation:"Unlike the FA Cup, the League Cup is restricted to the top 4 professional divisions."},{id:62,q:"When is the League Cup Final typically played?",options:["May","August","February","December"],correct:"February",explanation:"It offers the season's first silverware with a final in February."},{id:63,q:"Which is considered more prestigious: FA Cup or League Cup?",options:["League Cup","FA Cup","They are equal","Neither"],correct:"FA Cup",explanation:"The FA Cup's history and open format make it the more prestigious prize."},{id:64,q:"The Premier League is described as a 'Marathon' of how many games?",options:["30","38","40","46"],correct:"38",explanation:"The league season consists of 38 matches."},{id:65,q:"What defines the 'Magic' of the FA Cup?",options:["The unseeded, open-entry format allowing amateurs to play elite professionals","The guarantee of Champions League qualification for the winner","The rule granting automatic home advantage to the lower-division team","The absence of extra time or penalty shootouts in the later rounds"],correct:"The unseeded, open-entry format allowing amateurs to play elite professionals",explanation:"The fact that amateurs can play professionals in a completely open draw creates the historical magic of the tournament."},{id:66,q:"Which London stadium is called the 'Home of Football'?",options:["Highbury","Wembley","Stamford Bridge","White Hart Lane"],correct:"Wembley",explanation:"Wembley Stadium holds this title."},{id:67,q:"Which two clubs are the only English teams to win the 'Continental Treble'?",options:["Liverpool & Arsenal","Man Utd & Man City","Chelsea & Man City","Man Utd & Liverpool"],correct:"Man Utd & Man City",explanation:"Only Man Utd (1999) and Man City (2023) have won the League, FA Cup, and UCL in one season."},{id:68,q:"What three trophies make up the classic 'Treble'?",options:["League, FA Cup, Champions League","League, League Cup, FA Cup","League, World Cup, Euros","FA Cup, League Cup, Shield"],correct:"League, FA Cup, Champions League",explanation:"The Continental Treble consists of the primary League, primary Cup, and primary European trophy."},{id:69,q:"What was the Champions League originally called (1955-1992)?",options:["The UEFA Cup","The European Cup","The World League","The Super Cup"],correct:"The European Cup",explanation:"It was rebranded from the European Cup to the Champions League in 1992."},{id:70,q:"Which nickname is given to the CL Trophy?",options:["The Big Vase","Ol' Big Ears","The Silver Mug","The Holy Grail"],correct:"Ol' Big Ears",explanation:"The trophy is famous for its large handles."},{id:71,q:"In the 2024 revamp, the Group Stage was replaced by what?",options:["A Knockout Tree","A League Phase","A Regional Group","A Super League"],correct:"A League Phase",explanation:"The 36 teams now compete in a single league table."},{id:72,q:"How many matches does each team play in the new League Phase?",options:["6","8","10","4"],correct:"8",explanation:"Teams play 8 matches (4 home, 4 away) against different opponents."},{id:73,q:"How many teams are in the new single league table?",options:["32","36","40","24"],correct:"36",explanation:"The format expanded from 32 to 36 teams."},{id:74,q:"Which club won the first 5 European Cups in a row?",options:["AC Milan","Liverpool","Real Madrid","Ajax"],correct:"Real Madrid",explanation:"Real Madrid dominated the early era (1956-1960)."},{id:75,q:"Real Madrid's obsession with 'La Décima' culminated in 2014. What does this term specifically refer to?",options:["Winning 10 consecutive La Liga titles","Their 10th European Cup / Champions League title","Signing their 10th Ballon d'Or winner","Reaching 10 consecutive finals"],correct:"Their 10th European Cup / Champions League title",explanation:"La Décima is the Spanish term for 'The Tenth', referring to their historic 10th European Cup victory."},{id:76,q:"Which manager won 3 UCL titles in a row with Real Madrid?",options:["Ancelotti","Zidane","Mourinho","Guardiola"],correct:"Zidane",explanation:"Zinedine Zidane managed Madrid to a 'Three-peat' (2016-18)."},{id:77,q:"Who is the all-time top scorer in the Champions League?",options:["Messi","Haaland","Ronaldo","Lewandowski"],correct:"Ronaldo",explanation:"Cristiano Ronaldo leads with 140 goals."},{id:78,q:"Which English club has the most UCL titles (6)?",options:["Man Utd","Liverpool","Chelsea","Nottingham Forest"],correct:"Liverpool",explanation:"Liverpool are the English kings of Europe with 6 titles."},{id:79,q:"The 'Coefficient System' ranks leagues based on performance over how many years?",options:["1 year","3 years","5 years","10 years"],correct:"5 years",explanation:"UEFA uses a 5-year rolling average to rank leagues."},{id:80,q:"What happens to the bottom 12 teams in the new League Phase?",options:["Relegated to Europa League","Eliminated completely","Play a playoff","Restart the group"],correct:"Eliminated completely",explanation:"There is no more drop-down to the Europa League for the bottom teams."},{id:81,q:"What is the 'Backdoor' prize for winning the Europa League?",options:["Cash only","A friendly with the CL winner","Champions League Qualification","A bye to the final"],correct:"Champions League Qualification",explanation:"Winning the Europa League grants entry to the next season's UCL."},{id:82,q:"Which English club famously scored two stoppage-time goals to defeat Bayern Munich in the 1999 Final?",options:["Liverpool","Manchester United","Chelsea","Arsenal"],correct:"Manchester United",explanation:"United scored two goals in 'Fergie Time' to win 2-1 and complete the Treble."},{id:83,q:"In 1994, AC Milan produced a tactical masterclass to thrash which heavily favored 'Dream Team' 4-0?",options:["Ajax","Juventus","Barcelona","Marseille"],correct:"Barcelona",explanation:"Cruyff's Barcelona were expected to win easily, but Milan destroyed them 4-0."},{id:84,q:"Under the new 2024 Champions League format, what happens to the teams that finish between 9th and 24th in the League Phase?",options:["They must compete in a knockout play-off round","They drop down into the Europa League","They automatically qualify for the Round of 16","They are immediately eliminated"],correct:"They must compete in a knockout play-off round",explanation:"While the top 8 teams receive a bye, teams finishing 9th to 24th must compete in a high-stakes play-off round to reach the last 16."},{id:85,q:"How often is the FIFA World Cup held?",options:["Every year","Every 2 years","Every 4 years","Every 5 years"],correct:"Every 4 years",explanation:"The World Cup remains a quadrennial tournament, held every 4 years."},{id:86,q:"Which nation won the first ever World Cup in 1930?",options:["Brazil","Italy","Uruguay","Argentina"],correct:"Uruguay",explanation:"Uruguay hosted and won the first tournament."},{id:87,q:"What was the original World Cup trophy called?",options:["The FIFA Cup","The Jules Rimet","The Golden Globe","The Victory Cup"],correct:"The Jules Rimet",explanation:"It was named after the FIFA president who created the tournament."},{id:88,q:"Which two continents have won every World Cup in history?",options:["Europe & Asia","South America & Europe","Africa & South America","North America & Europe"],correct:"South America & Europe",explanation:"No team from outside these two continents has ever won the prize."},{id:89,q:"Which country has won the most World Cups (5)?",options:["Germany","Italy","Argentina","Brazil"],correct:"Brazil",explanation:"Brazil are the 'Pentacampeões' (Five-time champions)."},{id:90,q:"Who is the only player in history to win 3 World Cups?",options:["Maradona","Messi","Pelé","Zidane"],correct:"Pelé",explanation:"Pelé won the title in 1958, 1962, and 1970."},{id:91,q:"Which nation is the only one to play in every single tournament?",options:["Germany","Brazil","Argentina","France"],correct:"Brazil",explanation:"Brazil has perfect attendance since 1930."},{id:92,q:"What was the 'Maracanaço'?",options:["A dance","Uruguay beating Brazil in 1950","Pelé's first goal","A stadium collapse"],correct:"Uruguay beating Brazil in 1950",explanation:"Uruguay stunned the hosts Brazil in the deciding match of 1950."},{id:93,q:"Who scored the FIRST ever hat-trick in a World Cup Final (1966)?",options:["Kylian Mbappé","Geoff Hurst","Pelé","Ronaldo"],correct:"Geoff Hurst",explanation:"Geoff Hurst scored 3 against West Germany. Mbappé became the second to do so in 2022."},{id:94,q:"Diego Maradona scored the 'Hand of God' against which team?",options:["Brazil","Germany","England","Italy"],correct:"England",explanation:"He scored the controversial goal against England in the 1986 quarter-final."},{id:95,q:"How did Zinedine Zidane end his World Cup career in 2006?",options:["Scoring a winner","With a headbutt and red card","Lifting the trophy","Injured on the bench"],correct:"With a headbutt and red card",explanation:"He was sent off for headbutting Materazzi in the final."},{id:96,q:"What was the result of the 2014 semi-final between Germany and Brazil?",options:["1-0","2-1","7-1","3-3"],correct:"7-1",explanation:"Germany dismantled the hosts 7-1 in a historic shock."},{id:97,q:"Who is the all-time top scorer in World Cup history (16 goals)?",options:["Ronaldo (R9)","Miroslav Klose","Gerd Muller","Messi"],correct:"Miroslav Klose",explanation:"German striker Klose holds the record with 16 goals."},{id:98,q:"Why was the 2022 World Cup held in Winter?",options:["COVID-19","Extreme heat in Qatar","TV schedules","Stadium construction delays"],correct:"Extreme heat in Qatar",explanation:"Summer temperatures in Qatar made playing impossible."},{id:99,q:"Who finally won the World Cup in 2022?",options:["Cristiano Ronaldo","Kylian Mbappé","Lionel Messi","Neymar"],correct:"Lionel Messi",explanation:"Messi led Argentina to glory in Qatar."},{id:100,q:"How many teams will play in the 2026 World Cup?",options:["32","40","48","64"],correct:"48",explanation:"The tournament expands to 48 teams for the first time."}]},mod3:{title:"Elite Strategy",questions:[{id:1,q:"In a 4-3-3, what is the primary defensive function of the Single Pivot (#6)?",options:["To drive forward into the box","To screen the back four and cut passing lanes","To man-mark the opposing #10","To drift wide and cover the full-backs"],correct:"To screen the back four and cut passing lanes",explanation:"The Single Pivot sits centrally in front of the defence to screen the back four and cut out vertical passing lanes."},{id:2,q:"Where do the two #8s position themselves in a modern attacking 4-3-3?",options:["Deep alongside the #6","In the advanced half-spaces","Hugging the touchline","Inside the penalty area only"],correct:"In the advanced half-spaces",explanation:"The #8s push into advanced half-spaces (channels) to create a 5-man attacking line alongside the front three."},{id:3,q:"What is the tactical goal of wide forwards staying 'high and wide'?",options:["To overload the central midfield","To stretch the defence and isolate full-backs 1v1","To track the opposing wing-backs deep","To support the defensive transition"],correct:"To stretch the defence and isolate full-backs 1v1",explanation:"Staying wide forces the defensive line to expand, creating gaps in the middle or isolating the full-back 1v1."},{id:4,q:"What is the specific risk of the 'Double Pivot' in a 4-2-3-1 pushing too high?",options:["The striker becomes isolated","The back four is exposed to direct counter-attacks","The team loses width","The wingers cannot cut inside"],correct:"The back four is exposed to direct counter-attacks",explanation:"If both anchors push up simultaneously, the defensive screen is lost, leaving the centre-backs vulnerable to transitions."},{id:5,q:"What is the primary function of a 'False Nine'?",options:["To act as a target man for crosses","To drop deep and pull centre-backs out of position","To run in behind the defence","To drift wide to the wings"],correct:"To drop deep and pull centre-backs out of position",explanation:"A False Nine drops into midfield to create a numerical overload, forcing CBs to decide whether to follow (leaving space) or stay (allowing the turn)."},{id:6,q:"SCENARIO: You instruct your striker to play as a 'False 9' and drop deep. However, your wingers remain static on the touchline. Why has this system failed?",options:["The midfield is too congested.","The full-backs are blocked from overlapping.","The space vacated by the striker is not being filled, killing the goal threat.","The defensive line height is too low."],correct:"The space vacated by the striker is not being filled, killing the goal threat.",explanation:"The Seesaw Principle: If the striker leaves the box, the wingers MUST run diagonally behind to fill the space."},{id:7,q:"How is a 'Box Midfield' typically created in a 3-4-3 hybrid system?",options:["By pushing the centre-back into midfield","Wide forwards moving inside to join central midfielders","The goalkeeper joining the line","Full-backs inverting completely"],correct:"Wide forwards moving inside to join central midfielders",explanation:"Moving wide forwards narrow alongside the two central mids forms a box shape (two deep, two advanced)."},{id:8,q:"What specific numerical advantage does a Box Midfield target against a standard midfield?",options:["2v1","4v3 or 4v2","3v3 Man-to-Man","5v5"],correct:"4v3 or 4v2",explanation:"The box creates a 4v3 or 4v2 overload in the central engine room, ensuring a free man is always available."},{id:9,q:"What does 'Verticality' mean in elite tactical analysis?",options:["Playing high balls only","Passing forward to bypass defensive lines","Keeping possession sideways","Dribbling toward the corner flag"],correct:"Passing forward to bypass defensive lines",explanation:"Verticality refers to forward passes that break through opposition lines rather than safe lateral possession."},{id:10,q:"What is the 'Overload to Isolate' strategy?",options:["Creating a 2v1 on the wing","Drawing defence to one side to create 1v1 space on the other","Playing through the center exclusively","Defending deep to counter"],correct:"Drawing defence to one side to create 1v1 space on the other",explanation:"Teams overload one flank to force the defence to shift, then rapidly switch play to the isolated winger on the far side."},{id:11,q:"Which player types are described as 'Elite Engine' requirements for the 3-4-3?",options:["Wing-backs","Goalkeepers","False Nines","Centre-backs"],correct:"Wing-backs",explanation:"Wing-backs must cover the entire flank (defence to attack) for 90 minutes, requiring elite stamina."},{id:12,q:"In a 4-2-3-1 system, what is the primary structural purpose of the 'Double Pivot'?",options:["To push into the penalty area and score goals","To provide a secure defensive screen in front of the back four","To overlap the wingers on the touchline","To man-mark the opponent's centre-backs"],correct:"To provide a secure defensive screen in front of the back four",explanation:"The two deep midfielders (the Double Pivot) anchor the midfield, allowing the four attacking players ahead of them to operate with freedom."},{id:13,q:"Who are the 'Prototypes' mentioned for the elite technical winger role?",options:["Haaland & Kane","Olise & Yamal","Rice & Rodri","Walker & Stones"],correct:"Olise & Yamal",explanation:"Michael Olise and Lamine Yamal are cited as technical masters capable of exploiting wide 1v1 situations."},{id:14,q:"In a defensive phase, what shape does the modern 3-4-3 usually collapse into?",options:["4-4-2","5-4-1","4-3-3","4-5-1"],correct:"5-4-1",explanation:"Wing-backs drop deep to form a back five, creating a compact 5-4-1 defensive block."},{id:15,q:"What allows the two #8s in a 4-3-3 to push forward safely?",options:["The opponent playing deep","The Single Pivot (#6) providing security","The high defensive line","The goalkeeper sweeping"],correct:"The Single Pivot (#6) providing security",explanation:"The defensive security and screening of the #6 allows the other midfielders to take attacking risks."},{id:16,q:"What is the tactical term for the channel between the wing and the centre?",options:["The Overlap Zone","The Half-Space","The Transition Channel","The Pivot Zone"],correct:"The Half-Space",explanation:"The Half-Space is the vertical corridor between the wide area and the centre, crucial for modern attacking play."},{id:17,q:"Why might a team use 'Inverted Wing-Backs' in possession?",options:["To widen the pitch","To create a central numerical overload","To mark the opposing winger","To allow the Centre-Backs to overlap"],correct:"To create a central numerical overload",explanation:"Moving a full-back into midfield adds an extra body to control possession and stop counters."},{id:18,q:"In the 4-2-3-1, how many 'creators' operate between the lines?",options:["1 (The #10 only)","2 (The full-backs)","3 (The #10 and two attacking midfielders)","4 (Including the striker)"],correct:"3 (The #10 and two attacking midfielders)",explanation:"The #10 and the two wide attacking midfielders act as the three creators behind the striker."},{id:19,q:"What defines an 'Elite Engine' physical profile?",options:["Top sprint speed","Ability to cover max distance at intensity for 90 mins","Physical strength","Jumping reach"],correct:"Ability to cover max distance at intensity for 90 mins",explanation:"Elite Engines possess the stamina to perform high-intensity work (sprints and recovery) for the full match."},{id:20,q:"What happens if a team fails to play 'Vertical' passes?",options:["They lose possession immediately","They play 'U-shaped' football","They concede a counter-attack","They force the opponent deep"],correct:"They play 'U-shaped' football",explanation:"Lack of verticality results in harmless sideways possession around the defensive block (U-Shape)."},{id:21,q:"What is the '5-Second Rule' in high pressing?",options:["Hold the ball for 5 seconds to draw fouls","Hunt the ball for 5 seconds after losing it","Delay the restart for 5 seconds","Pass every 5 seconds"],correct:"Hunt the ball for 5 seconds after losing it",explanation:"Teams must aggressively hunt for 5 seconds after turnover; if they fail, they retreat to a block."},{id:22,q:"What is a 'Pressing Trigger'?",options:["A tactical foul","A specific cue (bad touch/slow pass) to initiate the press","A shout from the goalkeeper","The ball going out of play"],correct:"A specific cue (bad touch/slow pass) to initiate the press",explanation:"Triggers are specific moments that signal the team to initiate the collective hunt."},{id:23,q:"What is 'Shadow Cover'?",options:["Man-marking the ball carrier","Using body shape to block the passing lane to a player behind","Tracking a runner deep","Double-teaming the winger"],correct:"Using body shape to block the passing lane to a player behind",explanation:"Shadow cover prevents the ball carrier from passing to the player directly behind the presser."},{id:24,q:"Why is the touchline called the '12th Man'?",options:["It limits the opponent's movement to 180 degrees, creating a dead zone","It naturally forces the opponent to play back to their goalkeeper","It expands the 'Green Ocean' to isolate the winger","It forces the ball carrier to attempt a high-risk cross-field pass"],correct:"It limits the opponent's movement to 180 degrees, creating a dead zone",explanation:"The touchline acts as an impassable barrier, cutting off half the pitch and trapping the opponent."},{id:25,q:"What is the 'Green Ocean'?",options:["The area between the midfield and defense","The vast space behind a high defensive line","The wide channels","The penalty area"],correct:"The vast space behind a high defensive line",explanation:"The Green Ocean is the dangerous open space left behind a high backline, vulnerable to long balls."},{id:26,q:"What is the 'Domino Effect' in pressing?",options:["Forcing a mistake leads to a goal","If one player is bypassed, the whole system collapses","Pressing leads to fatigue","Switching play quickly"],correct:"If one player is bypassed, the whole system collapses",explanation:"Man-to-man pressing relies on every link holding; one failure exposes the space for everyone else."},{id:27,q:"Who initiates a unified high press?",options:["The Defensive Midfielder","The Striker","The Centre-Back","The Manager"],correct:"The Striker",explanation:"The striker is the first line of defence and triggers the team's Unified Press movement."},{id:28,q:"SCENARIO: You implement a High Press but your Centre-Backs lack 'Recovery Pace'. What is the specific tactical vulnerability?",options:["Struggle to maintain possession.","A single long ball into the 'Green Ocean' creates immediate 1v1 chances.","Midfield overload.","Goalkeeper forced to pass short."],correct:"A single long ball into the 'Green Ocean' creates immediate 1v1 chances.",explanation:"Without speed, a high line is suicide against long balls into the space behind."},{id:29,q:"What is 'Shepherding'?",options:["Marking tight","Guiding an opponent toward a trap (like the touchline)","Fouling tactically","Blocking a shot"],correct:"Guiding an opponent toward a trap (like the touchline)",explanation:"Defenders position themselves to force the attacker into a specific, limited area where they can be tackled."},{id:30,q:"What happens if the 5-second hunt fails?",options:["Retreat to a defensive block","Keep pressing individually to force an error","Commit a tactical foul to break the rhythm","Initiate a full-pitch man-to-man marking scheme"],correct:"Retreat to a defensive block",explanation:"To avoid fatigue and gaps, teams must retreat and reorganize if the immediate press fails."},{id:31,q:"Which defensive duo were cited as examples of Recovery Pace?",options:["Terry & Vidic","Saliba & Pacho","Silva & Ramos","Bonucci & Chiellini"],correct:"Saliba & Pacho",explanation:"Saliba (Arsenal) and Pacho (PSG) are modern examples of high-line defenders with elite speed."},{id:32,q:"Where does the defensive line sit during a high press?",options:["Deep in the box","Near the halfway line","On the 18-yard line","Marking the striker only"],correct:"Near the halfway line",explanation:"To compress the pitch vertically, the defensive line pushes up to the halfway line."},{id:33,q:"What is the 'Dead Zone'?",options:["The centre circle","The area against the touchline where options are cut","The space behind the striker","The goalkeeper's box"],correct:"The area against the touchline where options are cut",explanation:"The touchline trap creates a dead zone where the attacker has no passing angles."},{id:34,q:"Why is a bad touch a trigger?",options:["It guarantees the pressing team a 2v1 numerical advantage","It forces the attacker to look down, momentarily losing vision","It naturally triggers the offside trap","It allows the defensive line to drop deeper safely"],correct:"It forces the attacker to look down, momentarily losing vision",explanation:"A heavy touch forces the player to focus on the ball, blinding them to the incoming press."},{id:35,q:"What is the primary objective of pressing?",options:["To win the ball back near the opponent's goal","To force the opponent to play harmless U-shaped passes","To exhaust the opposition's central midfielders","To protect the 'Green Ocean' behind the defensive line"],correct:"To win the ball back near the opponent's goal",explanation:"Winning the ball high up the pitch creates immediate scoring chances against a disorganized defence."},{id:36,q:"Which managers are famous for High Pressing?",options:["Mourinho & Conte","Klopp & Guardiola","Ancelotti & Allegri","Simeone & Dyche"],correct:"Klopp & Guardiola",explanation:"Jurgen Klopp (Gegenpressing) and Pep Guardiola are pioneers of the modern high press."},{id:37,q:"What does 'Unified Pressing' mean?",options:["Everyone marks a man","The whole team moves together as one unit","Only forwards press","Pressing only in certain zones"],correct:"The whole team moves together as one unit",explanation:"Effective pressing requires the entire team to move in sync to close spaces collectively."},{id:38,q:"Why is the High Line considered 'High Risk'?",options:["It requires too much stamina","One accurate long ball can lead to a 1v1 with the keeper","It leaves the midfield empty","It causes offside traps to fail"],correct:"One accurate long ball can lead to a 1v1 with the keeper",explanation:"Leaving space behind means a single pass can bypass the entire defence."},{id:39,q:"How do teams use 'Cover Shadows' effectively?",options:["By tackling from behind","By positioning between the ball and the receiver","By standing on the passing line","By double marking"],correct:"By positioning between the ball and the receiver",explanation:"Cover shadows cut the supply line without needing to physically mark the receiver."},{id:40,q:"In the 'Manager's Dilemma' risk assessment, what is the consequence of playing a High Line without recovery pace?",options:["The team will tire out by the 60th minute","They get exposed by balls over the top into the 'Green Ocean'","The offside trap becomes ineffective","The midfield becomes too congested"],correct:"They get exposed by balls over the top into the 'Green Ocean'",explanation:"Slow defenders cannot catch attackers once the ball is played into the Green Ocean."},{id:41,q:"What is the primary goal of the 'Mid-Block'?",options:["To win the ball high","To congest the middle and deny central penetration","To protect the 6-yard box","To force long balls"],correct:"To congest the middle and deny central penetration",explanation:"A Mid-Block prioritizes protecting the central space over winning the ball high."},{id:42,q:"What shape is often associated with the Mid-Block?",options:["The Diamond","The Spider Web","The Flat Four","The Triangle"],correct:"The Spider Web",explanation:"The Spider Web describes a shape that traps opponents in the congested middle."},{id:43,q:"What is 'U-Shaped' football?",options:["Attacking through the center","Harmless sideways passing around a defensive block","Long balls to the corners","Counter-attacking speed"],correct:"Harmless sideways passing around a defensive block",explanation:"Effective blocks force the opponent to pass wide and back in a U-shape, preventing penetration."},{id:44,q:"What is the 'Chaos Window'?",options:["The last 5 minutes","The 3 seconds immediately after possession is won/lost","Injury time","The transfer window"],correct:"The 3 seconds immediately after possession is won/lost",explanation:"The moment of transition where both teams are disorganized."},{id:45,q:"Why is the Chaos Window highly dangerous for the team that just lost the ball?",options:["They are expanded and disorganized because they were positioned to attack","They are caught in a narrow, highly rigid defensive shape","Their centre-backs are forced to man-mark the opposing wingers","The offside rule is naturally bypassed during rapid transitions"],correct:"They are expanded and disorganized because they were positioned to attack",explanation:"Defences spread out to attack, leaving massive structural gaps if they suddenly lose possession before resetting."},{id:46,q:"What does 'Route 1' refer to?",options:["Playing out from the back","A direct long ball bypassing the midfield","Dribbling through the center","Crossing from deep"],correct:"A direct long ball bypassing the midfield",explanation:"Route 1 is the most direct path to goal, skipping the buildup phase entirely."},{id:47,q:"What is the 'High Outlet' role?",options:["A holding midfielder","An attacker who hangs on the last defender to exploit space","A full-back staying wide","A target man dropping deep"],correct:"An attacker who hangs on the last defender to exploit space",explanation:"The Outlet stays forward to give the team a target for the counter-attack."},{id:48,q:"Which player is a prime example of a High Outlet?",options:["Declan Rice","Kylian Mbappé","Bernardo Silva","Virgil van Dijk"],correct:"Kylian Mbappé",explanation:"Mbappé often stays forward to use his speed in transition moments."},{id:49,q:"What is the common nickname for a Low Block?",options:["The Wall","Parking the Bus","The Fortress","The Shell"],correct:"Parking the Bus",explanation:"Defending deep with all players is famously called 'Parking the Bus'."},{id:50,q:"SCENARIO: 90th Minute. Leading 1-0 in a final. You win possession. You signal 'Red Light'. What is the correct instruction?",options:["Drive vertically to score.","Switch play to the winger.","Do NOT counter. Take the ball to the corner flag to kill the clock.","Clear the ball long."],correct:"Do NOT counter. Take the ball to the corner flag to kill the clock.",explanation:"Elite Game Management: Winning teams kill the momentum to secure the result."},{id:51,q:"SCENARIO: Chasing a goal. You win the ball. What is the 'Green Light' decision?",options:["Recycle possession","Pass Vertical immediately to exploit the Chaos Window","Pass back to the keeper","Slow the tempo"],correct:"Pass Vertical immediately to exploit the Chaos Window",explanation:"When chasing a goal, you must exploit the opponent's disorganization instantly."},{id:52,q:"Where does a Low Block typically defend?",options:["Near the halfway line","Deep inside their own penalty area","In the opponent's half","On the flanks"],correct:"Deep inside their own penalty area",explanation:"Low Blocks concede territory to protect the immediate area in front of goal."},{id:53,q:"What is the key to a successful counter-attack?",options:["Dribbling skill","Verticality (Forward passing)","Possession retention","Switching play"],correct:"Verticality (Forward passing)",explanation:"Rapid forward passing exploits the Chaos Window before the defence resets."},{id:54,q:"What does a Mid-Block try to prevent?",options:["Wing play","Central passes between the lines","Long balls","Back passes"],correct:"Central passes between the lines",explanation:"The priority is stopping the opponent from playing through the center."},{id:55,q:"SCENARIO: You are defending in a Mid-Block. The opponent has 70% possession but only passes laterally between their defenders. What is your tactical assessment?",options:["The Mid-Block is working perfectly, forcing harmless 'U-Shaped' football","The Mid-Block has failed because the opponent is dominating possession","The team must immediately abandon the block and initiate a High Press","The opponent is effectively utilizing the 'Chaos Window'"],correct:"The Mid-Block is working perfectly, forcing harmless 'U-Shaped' football",explanation:"A successful Mid-Block concedes possession in non-threatening areas, prioritizing central solidity over winning the ball."},{id:56,q:"Why might a team choose Route 1?",options:["To keep possession","To bypass a high press","To tire the opponent","To draw fouls"],correct:"To bypass a high press",explanation:"Playing long eliminates the risk of losing the ball near your own goal."},{id:57,q:"What makes a 'Release Valve' effective?",options:["Scoring goals","Holding the ball up or winning a foul","Dribbling past players","Crossing early"],correct:"Holding the ball up or winning a foul",explanation:"The outlet must secure possession to allow teammates to move up the pitch."},{id:58,q:"What defines elite 'Transition Intelligence' in a player?",options:["Reading the turnover before it happens to gain a kinetic head start","Executing a perfectly timed slide tackle to halt a counter-attack","Memorizing the opponent's attacking set-piece routines","Instructing the defensive line to immediately drop into a Low Block"],correct:"Reading the turnover before it happens to gain a kinetic head start",explanation:"Elite players anticipate the turnover, allowing them to react and move into space before the opponent even realizes possession has changed."},{id:59,q:"Which area does Route 1 target?",options:["The midfield battle","The Green Ocean behind the defence","The wide channels","The feet of the #10"],correct:"The Green Ocean behind the defence",explanation:"Long balls aim for the space behind the high defensive line."},{id:60,q:"If a Mid-Block succeeds, where is the ball forced?",options:["Through the middle","Wide to the wings","Back to the keeper","Out for a throw-in"],correct:"Wide to the wings",explanation:"Forcing play wide is a win for the Mid-Block as it is less dangerous."},{id:61,q:"What percentage of modern elite goals come from set plays?",options:["10%","30%","50%","5%"],correct:"30%",explanation:"Set pieces now account for nearly a third of all goals."},{id:62,q:"What is 'Goalie Screening'?",options:["Protecting the keeper","Legally obstructing the keeper's path","Marking the near post","Blocking the view"],correct:"Legally obstructing the keeper's path",explanation:"Attackers block the keeper to delay their claim of the ball."},{id:63,q:"Why is 'Vertical Launch' (Long Throw) effective?",options:["It reaches the box","It has a flat trajectory and acts as a virtual corner","It allows the team to reset","It bypasses the midfield"],correct:"It has a flat trajectory and acts as a virtual corner",explanation:"Flat, fast throws pin defenders back and create chaos."},{id:64,q:"What is the specific rule exemption for throw-ins?",options:["No fouls called","No offside","Two hands required","Feet must be on the ground"],correct:"No offside",explanation:"You cannot be offside from a throw-in."},{id:65,q:"What defines an 'Inswinger'?",options:["Curving away from goal","Curving toward goal","A straight delivery","A lofted ball"],correct:"Curving toward goal",explanation:"Inswingers curve towards the goalkeeper."},{id:66,q:"What is the psychological effect of an Inswinger?",options:["Confidence for the defence","Keeper panic","Easy to clear","Predictability"],correct:"Keeper panic",explanation:"Balls curling onto the goal line force keepers to make risky decisions."},{id:67,q:"What defines an 'Outswinger'?",options:["Curving toward goal","Curving away from goal","A driven cross","A chip"],correct:"Curving away from goal",explanation:"Outswingers curve away from the keeper."},{id:68,q:"What is the tactical benefit of an Outswinger?",options:["Direct goal threat","Attackers can run onto the ball at pace","Easier for the keeper","Forces an own goal"],correct:"Attackers can run onto the ball at pace",explanation:"Moving away from goal allows attackers to generate power from their run."},{id:69,q:"What is a 'Hybrid' defensive system?",options:["Man-marking only","Zonal only","A mix of Man-Marking and Zonal","No specific system"],correct:"A mix of Man-Marking and Zonal",explanation:"Hybrid systems use zonal blockers for space and man-markers for threats."},{id:70,q:"Why have teams moved away from Pure Man-Marking?",options:["It is too tiring","It is vulnerable to screening and picks","Players dislike it","It causes penalties"],correct:"It is vulnerable to screening and picks",explanation:"Man-marking is easily disrupted by blockers (screens)."},{id:71,q:"What is the goal of 'Pinning' defenders?",options:["To foul them","To force them deep into the 6-yard box","To tire them out","To create a 1v1"],correct:"To force them deep into the 6-yard box",explanation:"Pinning keeps defenders close to their line, creating space at the penalty spot."},{id:72,q:"Who is the player associated with the 'Long Throw Legacy'?",options:["David Beckham","Rory Delap","Gareth Bale","Trent Alexander-Arnold"],correct:"Rory Delap",explanation:"Delap's throws for Stoke City were a famous tactical weapon."},{id:73,q:"Why is a flat trajectory preferred for long throws?",options:["It looks better","It is harder to defend than a looped ball","It travels further","It is more accurate"],correct:"It is harder to defend than a looped ball",explanation:"Flat, fast balls give defenders less time to adjust."},{id:74,q:"Can you be offside if you stand behind the last defender on a throw-in?",options:["Yes","No","Only if you score","Only if you touch the ball"],correct:"No",explanation:"The offside rule does not apply to the throw-in taker's target."},{id:75,q:"What is the primary tactical advantage of 'Goalie Screening' during a corner kick?",options:["It delays the keeper's reaction time, removing the most dominant aerial defender from the sequence","It forces the referee to focus on the six-yard box, masking fouls occurring elsewhere","It automatically triggers a zonal marking response from the opposition's centre-backs","It creates a permanent 2v1 numerical overload on the near post"],correct:"It delays the keeper's reaction time, removing the most dominant aerial defender from the sequence",explanation:"By legally blocking the keeper's path, the attacking team removes the only player allowed to use their hands to claim the aerial ball."},{id:76,q:"What determines whether to use an Inswinger or Outswinger?",options:["Player preference","The opponent's defensive setup","The weather","Random selection"],correct:"The opponent's defensive setup",explanation:"Tacticians choose delivery based on goalkeeper weakness and defensive line height."},{id:77,q:"Which club is cited as a modern master of set pieces?",options:["Manchester City","Arsenal","Liverpool","Real Madrid"],correct:"Arsenal",explanation:"Arsenal has heavily invested in set-piece coaching to boost goal output."},{id:78,q:"When executing a Goalie Screen, at what point does the tactic cross the boundary into an illegal foul?",options:["Only if the attacker actively holds, pulls, or pushes the goalkeeper","If the attacker makes any physical contact with the goalkeeper inside the six-yard box","If the screen is initiated before the corner kick is officially taken","Goalie screening is universally illegal under modern VAR regulations"],correct:"Only if the attacker actively holds, pulls, or pushes the goalkeeper",explanation:"Standing your ground to block a path is a legal tactical screen; it only becomes a foul if active holding or pushing occurs."},{id:79,q:"What does 'Zonal' defending prioritize?",options:["The specific opponent","The space/area","The ball","The second ball"],correct:"The space/area",explanation:"Zonal defenders protect key zones regardless of player movement."},{id:80,q:"In tactical analysis, why are set pieces specifically categorized as 'Dead Ball' situations?",options:["Because open play has completely stopped and the ball is stationary before the restart","Because the offside rule is temporarily suspended until the ball is touched by a second player","Because the match clock is officially paused by the referee until the ball is kicked","Because the defending team is forced to retreat into a passive Low Block"],correct:"Because open play has completely stopped and the ball is stationary before the restart",explanation:"The term refers to the ball being 'dead' (stationary and out of open play), giving teams time to execute highly rehearsed, static routines."},{id:81,q:"Who are the founders of Total Football?",options:["Guardiola & Mourinho","Rinus Michels & Johan Cruyff","Ferguson & Wenger","Ancelotti & Zidane"],correct:"Rinus Michels & Johan Cruyff",explanation:"Michels developed the theory, and Cruyff executed it on the pitch."},{id:82,q:"What is the core concept of Pitch Geometry in Total Football?",options:["Maintain a rigid shape","Expand space when attacking, contract when defending","Play wide at all times","Focus on counter-attacks"],correct:"Expand space when attacking, contract when defending",explanation:"Making the pitch big in possession and small out of possession."},{id:83,q:"What is 'Positional Interchange'?",options:["Substitutions","Players rotating roles to cover vacated space","Switching wings","Changing formation mid-game"],correct:"Players rotating roles to cover vacated space",explanation:"If a player leaves their zone, another must instantly fill it."},{id:84,q:"What does the 'Sweeper Keeper' provide in build-up?",options:["Defensive cover","A numerical advantage (11th outfield player)","Long clearances","Shot stopping"],correct:"A numerical advantage (11th outfield player)",explanation:"Using the keeper as a passer creates an overload against the press."},{id:85,q:"What defines a 'Third Man Run' in elite tactical geometry?",options:["An untracked run into space while two others exchange passes","An overlapping run by a full-back to deliver a cross","A decoy run made by a striker to drag a centre-back away","A defensive recovery run to stop a counter-attack"],correct:"An untracked run into space while two others exchange passes",explanation:"As Player A passes to Player B, Player C (the Third Man) exploits the distracted defence by making an untracked run into open space."},{id:86,q:"What formation is the foundation of Total Football possession?",options:["4-4-2","4-3-3","3-5-2","5-4-1"],correct:"4-3-3",explanation:"The 4-3-3 creates the natural triangles needed for the system."},{id:87,q:"What is the benefit of 'Infinite Triangles'?",options:["Aesthetic appeal","The ball carrier always has at least two passing options","Defensive solidity","Faster counter-attacks"],correct:"The ball carrier always has at least two passing options",explanation:"Triangles ensure support angles for the player in possession."},{id:88,q:"Which modern manager evolved Cruyff's ideas into 'Juego de Posición'?",options:["Jurgen Klopp","Pep Guardiola","Mikel Arteta","Xabi Alonso"],correct:"Pep Guardiola",explanation:"Guardiola adapted Total Football into modern Positional Play."},{id:89,q:"What is the 'Clockwork' requirement?",options:["High fitness","Absolute tactical precision in rotation","Fast passing"," Disciplined defending"],correct:"Absolute tactical precision in rotation",explanation:"Rotations must be timed perfectly to maintain defensive structure."},{id:90,q:"What defines a 'Technical Centre-Back' in this system?",options:["Physical strength","Playmaking ability from the back","Heading ability","Man-marking skill"],correct:"Playmaking ability from the back",explanation:"Defenders must be able to initiate attacks with passing."},{id:91,q:"What is the goal of 'Contracting Space'?",options:["To rest","To deny the opponent room to play","To force long balls","To protect the lead"],correct:"To deny the opponent room to play",explanation:"Shrinking the playing area makes it harder for opponents to pass."},{id:92,q:"According to the Academy dossier records, which two players are officially highlighted as the 'System Pioneers' of the modern Sweeper Keeper role?",options:["Manuel Neuer & Ederson","Manuel Neuer & Alisson Becker","Ederson & Thibaut Courtois","Gianluigi Buffon & Iker Casillas"],correct:"Manuel Neuer & Ederson",explanation:"While many modern goalkeepers play out from the back, the dossier specifically highlights Manuel Neuer and Ederson as the pioneers who normalized the keeper acting as an 11th outfield playmaker."},{id:93,q:"Which club is the birthplace of Total Football?",options:["Barcelona","Ajax","Bayern Munich","AC Milan"],correct:"Ajax",explanation:"Ajax Amsterdam is where Rinus Michels developed the system."},{id:94,q:"Finish Johan Cruyff's legendary quote: 'Football is a game you play with your...'",options:["Brain","Feet","Heart","Teammates"],correct:"Brain",explanation:"Cruyff's philosophy was that physical and technical skill are completely useless without the elite tactical intelligence to manage space and timing."},{id:95,q:"What does 'Juego de Posición' mean?",options:["Positional Play","The Beautiful Game","Total Attack","Possession Football"],correct:"Positional Play",explanation:"The Spanish term for the structured possession game."},{id:96,q:"Under the rules of Positional Interchange, what MUST happen if a defender pushes forward into the attack?",options:["A midfielder must drop to cover the vacated space","The winger on that side must immediately drop into the defensive line","The goalkeeper must step out of the penalty box to act as a temporary centre-back","The team must instantly transition into a rigid 5-4-1 Low Block"],correct:"A midfielder must drop to cover the vacated space",explanation:"Total Football requires clockwork precision. If one player vacates their zone, another must immediately rotate in to maintain the team's structural shape."},{id:97,q:"How does the 4-3-3 aid possession?",options:["It naturally spaces players into 'Infinite Triangles', ensuring multiple passing options","It inherently creates a 'Box Midfield' to overload the central channels","It forces the wingers to drop deep and form a five-man defensive line","It allows for two traditional centre-forwards to pin the opposing centre-backs"],correct:"It naturally spaces players into 'Infinite Triangles', ensuring multiple passing options",explanation:"The natural staggered geometry of the 4-3-3 organically creates passing triangles all over the pitch, allowing the team to dominate possession safely."},{id:98,q:"While a Sweeper Keeper provides a numerical advantage in possession, what is their primary tactical function when the team is defending?",options:["To sweep up long balls played into the 'Green Ocean', allowing the defence to safely push a High Line","To drop onto the goal line and prepare for incoming cross-field aerial bombardments","To temporarily drop into the defensive line to act as a third centre-back against wide crosses","To physically man-mark the opponent's 'High Outlet' player during transition moments"],correct:"To sweep up long balls played into the 'Green Ocean', allowing the defence to safely push a High Line",explanation:"By sweeping up the space behind the defence, the keeper neutralizes the threat of long balls, which gives the centre-backs the confidence to push their High Line up to the halfway mark."},{id:99,q:"According to Johan Cruyff's philosophy on Total Football, why is purely possessing elite 'technical skill' considered insufficient?",options:["Because technical skill is useless without the tactical intelligence to manage space and timing","Because modern football requires an 'Elite Engine' to cover maximum distance for 90 minutes","Because technical players are too easily physically bullied by a rigid Low Block","Because highly technical teams are inherently vulnerable to rapid, vertical counter-attacks"],correct:"Because technical skill is useless without the tactical intelligence to manage space and timing",explanation:"Cruyff famously stated that 'Football is a game you play with your Brain.' Physical and technical abilities are secondary to a player's spatial awareness and tactical decision-making."},{id:100,q:"Total Football prioritizes what over physical strength?",options:["Speed","Technical intelligence and space","Agility","Stamina"],correct:"Technical intelligence and space",explanation:"Understanding space is the primary attribute of a Total Footballer."}]},mod4:{title:"Business Mogul",questions:[{id:1,q:"In the transfer market, what are clubs legally purchasing?",options:["The player's human rights","The exclusive legal right to register the player","The player's image rights only","The player's sponsorship deals"],correct:"The exclusive legal right to register the player",explanation:"You aren't buying a human; you are buying the exclusive legal right to register that player."},{id:2,q:"MOGUL DILEMMA: Why do Elite Directors avoid the Winter Window (January) whenever possible?",options:["Players cost 20-30% more and lack tactical integration time","The UEFA financial reporting deadline prevents large amortisation hits mid-season","Players signed in January are cup-tied and ineligible for domestic league matches","Clubs are restricted to signing a maximum of two players during the winter period"],correct:"Players cost 20-30% more and lack tactical integration time",explanation:"Buying in winter incurs a 'Panic Premium', and new signings skip the crucial pre-season tactical integration."},{id:3,q:"What specific risk does a January signing face regarding 'Adaptation'?",options:["They skip pre-season and must learn complex tactics under extreme pressure","They automatically trigger the 'English Tax' if registered after December 31st","They are forced to accept lower baseline wages due to mid-season budget constraints","They forfeit their right to a signing bonus under FIFA TMS regulations"],correct:"They skip pre-season and must learn complex tactics under extreme pressure",explanation:"Without a pre-season to learn the manager's 'automations', players are thrown into high-intensity games immediately, which often leads to system failure."},{id:4,q:"According to the World Record timeline, how often do transfer records typically double?",options:["Every 2 years","Every 5 years","Every 8-10 years","Every 20 years"],correct:"Every 8-10 years",explanation:"Driven by TV revenue increases, the record fee doubles roughly every decade."},{id:5,q:"Who was the first £1m transfer (1979)?",options:["Alan Shearer","Trevor Francis","Diego Maradona","Johan Cruyff"],correct:"Trevor Francis",explanation:"Trevor Francis broke the £1m barrier in 1979."},{id:6,q:"MOGUL MATH: Utilizing the standard formula, a 'Free Transfer' player demanding £400,000 per week on a 4-year contract will cost approximately how much in total cash flow?",options:["£83,200,000","£19,200,000","£48,000,000","£104,000,000"],correct:"£83,200,000",explanation:"Wages > Fees. The formula is: (£400k x 52 weeks) x 4 years = £83.2m total package cost."},{id:7,q:"What is 'Mogul Rule #1' regarding Deadline Day?",options:["Always wait for the best price","Never leave business until the final hour","Use a fax machine for security","Call the Premier League directly"],correct:"Never leave business until the final hour",explanation:"Technical failures (internet/fax) in the final hour can cost you a £50m asset. Deal early."},{id:8,q:"Why is a player's medical exam strictly considered an 'Asset Valuation' by the boardroom?",options:["A chronic issue drops the digital registration asset value to zero","It allows the buying club to artificially lower the player's weekly wage structure","It is legally required by UEFA to bypass the strict Squad Quota limits","It legally transfers the player's image rights to the club's medical sponsor"],correct:"A chronic issue drops the digital registration asset value to zero",explanation:"The medical is an insurance policy. A chronic issue (like a degenerative knee) makes the digital registration asset worthless on the market."},{id:9,q:"What happens if paperwork is uploaded to FIFA TMS one second after the deadline?",options:["You pay a fine","You get a 1-hour extension","The deal is void","It goes to a tribunal"],correct:"The deal is void",explanation:"The FIFA TMS system locks instantly. Miss it by a second, and the deal is dead."},{id:10,q:"Which transfer window is strictly utilized by elite Sporting Directors for long-term 'Strategy'?",options:["The Summer Window (July–August)","The Winter Window (January)","The Financial Year-End (June)","The Pre-Contract Window (March)"],correct:"The Summer Window (July–August)",explanation:"The Summer Window (July-August) is for strategy; the Winter Window (January) is for panic."},{id:11,q:"When evaluating a potential transfer, what do elite 'Moguls' analyze instead of just the headline transfer fee?",options:["The 'Total Package', factoring in weekly wages, contract length, and agent fees","The immediate amortisation hit recorded on the balance sheet for the current fiscal year","The player's projected resale value minus the selling club's mandated 20% sell-on clause","The exact ratio of the transfer fee against the club's available SCR 'Buffer Zone' allowance"],correct:"The 'Total Package', factoring in weekly wages, contract length, and agent fees",explanation:"Amateurs look at the transfer fee. Moguls look at the 'Total Package'—wages, agent fees, and amortisation over the length of the contract."},{id:12,q:"How much did Real Madrid pay for Cristiano Ronaldo in 2009?",options:["£50m","£80m","£100m","£120m"],correct:"£80m",explanation:"Ronaldo's world record fee in 2009 was £80m."},{id:13,q:"Who set the world record at £15m in 1996?",options:["Ronaldo","Alan Shearer","Zinedine Zidane","Eric Cantona"],correct:"Alan Shearer",explanation:"Alan Shearer set the world record at £15m in 1996."},{id:14,q:"Who holds the current world record at £198m (2017)?",options:["Kylian Mbappé","Neymar","Paul Pogba","Harry Kane"],correct:"Neymar",explanation:"Neymar's move to PSG set the record at £198m."},{id:15,q:"What percentage fee can 'Super-agents' demand to facilitate a deal?",options:["1-2%","3-5%","10-20%","50%"],correct:"10-20%",explanation:"Super-agents can demand 10-20% of the deal value."},{id:16,q:"What does 'FIFA TMS' stand for?",options:["Transfer Market System","Transfer Matching System","Total Money System","Team Management Software"],correct:"Transfer Matching System",explanation:"The Transfer Matching System is the digital platform used to register deals."},{id:17,q:"Registration rights are tracked as what type of asset?",options:["Physical","Digital","Liquid","Fixed"],correct:"Digital",explanation:"The registration is a digital asset tracked by FIFA."},{id:18,q:"Which global football organization is officially in charge of operating the Transfer Matching System (TMS)?",options:["FIFA","UEFA","The English FA (Football Association)","The Court of Arbitration for Sport (CAS)"],correct:"FIFA",explanation:"The TMS is a global digital platform operated strictly by FIFA to track, verify, and clear cross-border international transfers."},{id:19,q:"According to the 'Mogul Formula', what are the three mathematical components required to calculate the true 'Total Package' cost of a player's wages?",options:["(Weekly Wage × 52 Weeks) × Contract Years","(Monthly Wage × 12 Months) + Estimated Agent Fees","(Weekly Wage × 38 Games) × Remaining Contract Length","(Annual Salary ÷ 5 Years) + Initial Transfer Fee"],correct:"(Weekly Wage × 52 Weeks) × Contract Years",explanation:"To calculate the true cash flow impact of a contract, Moguls look at the entire calendar year: (Weekly Wage × 52 Weeks) × Contract Years."},{id:20,q:"Why do elite clubs adhere to 'Mogul Rule #1' and avoid leaving transfer business until the final hours of Deadline Day?",options:["Technical failures, such as slow internet or fax machine errors, can cause paperwork to miss the midnight FIFA TMS deadline","UEFA actively downgrades the asset valuation of any player registered in the final 24 hours of the window","Selling clubs are legally required to add a 15% surcharge to any deal completed on the final day","Players signed on Deadline Day are automatically ineligible to play in the next round of domestic fixtures"],correct:"Technical failures, such as slow internet or fax machine errors, can cause paperwork to miss the midnight FIFA TMS deadline",explanation:"Never leave business until the final hour. A fax machine error or a slow internet connection can cost you a £50m asset if you miss the midnight TMS deadline by even one second."},{id:21,q:"Which owner fundamentally changed European football in 2003 by injecting personal wealth to bypass organic growth limits, sparking the 'Financial Doping' era?",options:["Jack Walker","Roman Abramovich","Sheikh Mansour","The Glazers"],correct:"Roman Abramovich",explanation:"Abramovich changed the game by injecting unprecedented personal wealth to bypass organic growth, completely altering the financial landscape of European football."},{id:22,q:"Which of these is a 'State Project' backed by a Sovereign Wealth Fund?",options:["Manchester United","Liverpool","Man City","Arsenal"],correct:"Man City",explanation:"Man City, PSG, and Newcastle are backed by nation-states (UAE, Qatar, Saudi Arabia)."},{id:23,q:"What is the primary geopolitical goal of a 'State Project' engaging in 'Sportswashing'?",options:["Cleaning a nation's global reputation on the world stage to generate 'Soft Power'","Maximizing annual operating profit through global merchandise sales and asset flipping","Establishing a monopoly on domestic television broadcasting rights","Bypassing UEFA's strict Squad Cost Ratio (SCR) limitations"],correct:"Cleaning a nation's global reputation on the world stage to generate 'Soft Power'",explanation:"The primary goal isn't necessarily annual operating profit. It is Soft Power, using the global popularity of elite football to normalize and improve the public image of their respective nations."},{id:24,q:"What is the 'Ambition Trap'?",options:["Billionaires spending aggressively to catch the elite, but lacking State-level funds to absorb the FFP penalties","Promoted teams overspending on wages in their first season and facing immediate relegation","Selling a star player without having a direct replacement identified in the scouting network","Focusing entirely on Champions League progression at the expense of domestic league survival"],correct:"Billionaires spending aggressively to catch the elite, but lacking State-level funds to absorb the FFP penalties",explanation:"Owners like those at Everton or Villa spend big to catch the elite but risk hitting FFP walls because they lack the infinite capital of sovereign wealth funds."},{id:25,q:"What is the primary operational advantage of the Multi-Club Ownership (MCO) model utilized by groups like CFG?",options:["Bypassing work permits, sharing global scouting data, and moving player assets freely between sister clubs","Merging the financial revenues of all clubs to artificially inflate a single club's PSR limit","Allowing a single manager to dictate the tactical systems of multiple teams simultaneously","Forcing rival clubs to pay a premium when negotiating transfers within the same domestic league"],correct:"Bypassing work permits, sharing global scouting data, and moving player assets freely between sister clubs",explanation:"Groups like CFG can move players between sister clubs to bypass regulations, share vast scouting networks, and develop talent internally across the globe."},{id:26,q:"What is the 'Gatekeeper' test for new owners called?",options:["The Owners' & Directors' Test","The Sovereign Wealth Vetting Protocol","The UEFA Capital Compliance Check","The Independent Regulator Assessment"],correct:"The Owners' & Directors' Test",explanation:"Commonly known as the 'Fit & Proper Person Test', it is officially called the Owners' & Directors' Test."},{id:27,q:"Why is it virtually impossible for an individual billionaire to financially compete with a 'State Project'?",options:["Because no single billionaire's private wealth can compete with the Gross Domestic Product (GDP) of an oil-rich nation","Because individual owners are strictly prohibited by UEFA from utilizing the Multi-Club Ownership (MCO) model","Because Sovereign Wealth Funds are legally exempt from the Premier League's Profit & Sustainability Rules","Because individual investors are not allowed to inject personal cash directly into stadium infrastructure"],correct:"Because no single billionaire's private wealth can compete with the Gross Domestic Product (GDP) of an oil-rich nation",explanation:"Owned effectively by nation-states (UAE, Saudi Arabia, Qatar), these clubs operate with virtually unlimited capital. No individual can compete with a nation's GDP."},{id:28,q:"Which takeover was delayed by over a year due to human rights concerns?",options:["Chelsea","Newcastle United","Man City","Man Utd"],correct:"Newcastle United",explanation:"The Saudi PIF takeover of Newcastle faced a long delay due to the 'Fit & Proper' test."},{id:29,q:"According to the Academy dossiers, which two specific competitions are primarily targeted by 'State Projects' as platforms to generate Soft Power and execute 'Sportswashing'?",options:["The Premier League and the UEFA Champions League","The Premier League and the FIFA World Cup","The UEFA Champions League and the UEFA European Championship","The Premier League and the FA Cup"],correct:"The Premier League and the UEFA Champions League",explanation:"State Projects utilize the massive, weekly global popularity of the Premier League and Champions League to normalize and improve their nation's public image on the world stage."},{id:30,q:"The Red Bull model is described as what?",options:["A retirement home","A factory line of talent","A marketing gimmick","A defensive system"],correct:"A factory line of talent",explanation:"Players move from Salzburg to Leipzig in a structured development pipeline."},{id:31,q:"Who owned Blackburn Rovers during their 1995 title win?",options:["Roman Abramovich","Jack Walker","Mike Ashley","The Walker Brothers"],correct:"Jack Walker",explanation:"Jack Walker was the local steel magnate who funded Blackburn."},{id:29,q:"According to the Academy dossiers, which two specific competitions are primarily targeted by 'State Projects' as platforms to generate Soft Power and execute 'Sportswashing'?",options:["The Premier League and the UEFA Champions League","The Premier League and the FIFA World Cup","The UEFA Champions League and the UEFA European Championship","The Premier League and the FA Cup"],correct:"The Premier League and the UEFA Champions League",explanation:"State Projects utilize the massive, weekly global popularity of the Premier League and Champions League to normalize and improve their nation's public image on the world stage."},{id:33,q:"According to the 'Ambition Trap' concept, which of the following clubs is cited as having billionaire owners who spend aggressively to catch the 'Big 6' but risk hitting PSR walls because they lack state-level wealth?",options:["Aston Villa","Tottenham Hotspur","Sunderland AFC","Brighton & Hove Albion"],correct:"Aston Villa",explanation:"Clubs like Everton and Aston Villa fall into the Ambition Trap; they have incredibly wealthy owners who want to compete, but their private wealth cannot absorb FFP/PSR penalties like a Sovereign Wealth Fund can."},{id:34,q:"What does 'CFG' stand for?",options:["City Football Group","Central Football Governance","Chelsea Football Group","Club Financial Group"],correct:"City Football Group",explanation:"CFG owns a network of clubs including Man City and Girona."},{id:35,q:"Which Spanish club is part of the CFG network?",options:["RB Leipzig","Girona","Nice","Strasbourg"],correct:"Girona",explanation:"Girona is part of the CFG network."},{id:36,q:"In the Red Bull pipeline, players move from Salzburg to where?",options:["New York","RB Leipzig","Munich","Vienna"],correct:"RB Leipzig",explanation:"Players develop at Salzburg and move to Leipzig."},{id:37,q:"What does the Owners' Test vet?",options:["The exact origin of the capital and any associated geopolitical or human rights issues","The new owner's strategic 5-year business plan for stadium expansion","The club's existing debt-to-revenue ratio under current UEFA guidelines","The historical multi-club ownership (MCO) portfolio of the incoming investor"],correct:"The exact origin of the capital and any associated geopolitical or human rights issues",explanation:"The test acts as a gatekeeper to vet the source of funds and any potential human rights issues before allowing a takeover."},{id:38,q:"Who represents the 'Local Dream' era of ownership?",options:["Roman Abramovich","Jack Walker","Sheikh Mansour","Stan Kroenke"],correct:"Jack Walker",explanation:"Jack Walker represents the Local Dream era."},{id:39,q:"Who represents the 'Oligarch' era?",options:["Jack Walker","Roman Abramovich","The Glazers","FSG"],correct:"Roman Abramovich",explanation:"Roman Abramovich represents the Oligarch era."},{id:40,q:"According to the Academy dossiers, what is the primary, ultimate goal of US Private Equity firms when taking over an elite football club?",options:["Strict Return on Investment (ROI) by massively increasing commercial revenue and eventually selling the franchise for a profit","Generating 'Soft Power' and improving the global geopolitical image of their domestic investors","Protecting the '50+1 Rule' to ensure local fans retain majority voting rights over boardroom decisions","Establishing a massive Multi-Club Ownership (MCO) network solely to bypass international work permit regulations"],correct:"Strict Return on Investment (ROI) by massively increasing commercial revenue and eventually selling the franchise for a profit",explanation:"Unlike State Projects looking for Soft Power, American private equity firms treat football clubs like massive corporate assets. Their end game is to grow the brand's valuation and 'flip' the asset for billions more than they paid for it."},{id:41,q:"What is the Premier League's 'Golden Number' for PSR loss limits?",options:["£50m","£105m","£200m","£0"],correct:"£105m",explanation:"Clubs cannot lose more than £105m over a rolling 3-year period."},{id:42,q:"SCENARIO: It is June 29th. You are £30m over the loss limit. You have two offers. Who MUST you sell?",options:["Star Player (Book Value £50m, Offer £60m)","Academy Graduate (Book Value £0, Offer £35m)","Squad Player (Book Value £10m, Offer £10m)","Keep everyone"],correct:"Academy Graduate (Book Value £0, Offer £35m)",explanation:"Selling the Star gives only £10m profit (£60m-£50m). Selling the Academy kid gives £35m Pure Profit, saving the club."},{id:43,q:"Why is selling an Academy player described as 'Pure Profit'?",options:["Their 'Book Cost' is £0, so the entire fee counts as immediate accounting profit","Because Academy players are legally exempt from agent facilitation fees under UEFA regulations","Because their transfer fees are not subject to standard corporate tax rates in the Premier League","Because selling a homegrown player automatically grants a £10m PSR buffer bonus"],correct:"Their 'Book Cost' is £0, so the entire fee counts as immediate accounting profit",explanation:"Since they cost nothing to buy, every penny of the sale counts as immediate accounting profit."},{id:44,q:"What is the core allegation in the Man City '115' case?",options:["Match fixing","Disguised Investment (inflating sponsorship)","Illegal approach for players","Not paying staff"],correct:"Disguised Investment (inflating sponsorship)",explanation:"Allegations involve inflating sponsorship revenue to hide direct owner investment."},{id:45,q:"Which clubs suffered points deductions in 2024 for PSR breaches?",options:["Chelsea & Man City","Everton & Nottingham Forest","Leicester & Leeds","Sheffield Utd & Luton"],correct:"Everton & Nottingham Forest",explanation:"Everton and Nottingham Forest were punished for breaching the £105m limit."},{id:46,q:"Under the upcoming Squad Cost Ratio (SCR) rules, what exact percentage of revenue represents the 'Red Threshold' that clubs cannot exceed without facing immediate sporting sanctions?",options:["115%","85%","100%","105%"],correct:"115%",explanation:"Spending over 115% of revenue triggers immediate sporting sanctions."},{id:47,q:"What is the penalty for breaching the SCR Red Threshold?",options:["A fine","Automatic 6-point deduction + multipliers","Transfer ban","Relegation"],correct:"Automatic 6-point deduction + multipliers",explanation:"It is a fixed 6-point deduction plus extra points for the amount overspent."},{id:48,q:"What is the 'Feedback Loop' in the new SCR rules?",options:["If you use the Buffer in Year 1, you lose it for Year 2 until you are compliant again","A mechanism requiring clubs to reinvest 20% of all transfer profits directly back into their academy","An automatic wage cap that activates if a club's debt-to-revenue ratio exceeds UEFA guidelines","The mandatory process of submitting quarterly financial reports to the independent regulator for approval"],correct:"If you use the Buffer in Year 1, you lose it for Year 2 until you are compliant again",explanation:"You cannot overspend every year; using the buffer reduces your allowance for the next season."},{id:49,q:"Why did Newcastle United sell promising young players like Elliot Anderson and Yankuba Minteh in June 2024?",options:["To generate immediate Pure Profit and pass PSR before the June 30th financial deadline","To clear roster space to comply with the Premier League's strict 25-man squad limit","To fund the immediate activation of a rival star player's massive release clause","Because both players formally submitted transfer requests to force moves to Champions League clubs"],correct:"To generate immediate Pure Profit and pass PSR before the June 30th financial deadline",explanation:"They needed immediate accounting profit before the June 30 deadline."},{id:50,q:"If you buy a player for £50m and sell him for £50m, what is the accounting profit?",options:["£50m","£0","£25m","£100m"],correct:"£0",explanation:"Sales Price (£50m) - Book Cost (£50m) = £0 Profit. It doesn't help FFP."},{id:51,q:"Under the new Squad Cost Ratio (SCR) rules, what does the 'Green Threshold' (85%) represent?",options:["The baseline limit clubs can spend on wages, transfers, and agent fees without utilizing their buffer","The minimum percentage of revenue a club is legally required to spend on stadium infrastructure","The maximum percentage of matchday broadcast revenue that can be allocated to squad salaries","The threshold at which a club is granted an automatic exemption from UEFA's Financial Fair Play checks"],correct:"The baseline limit clubs can spend on wages, transfers, and agent fees without utilizing their buffer",explanation:"Clubs can spend up to 85% of their revenue on wages, transfers, and agent fees. Spending beyond this dips into the heavily penalized buffer and red zones."},{id:52,q:"What is the penalty for spending in the 'Buffer Zone' (85-115%)?",options:["Points Deduction","Financial Levy (Fine)","Relegation","Warning"],correct:"Financial Levy (Fine)",explanation:"Spending in the buffer zone results in a Financial Levy."},{id:53,q:"Over what specific operational timeframe does the Premier League calculate a club's £105m Profit & Sustainability (PSR) limit?",options:["A rolling 3-year period","A single 12-month financial fiscal year","A rolling 5-year UEFA coefficient period","The exact duration of the current manager's contract"],correct:"A rolling 3-year period",explanation:"PSR is not judged on a single bad season. Clubs cannot lose more than £105m over a rolling 3-year accounting period."},{id:54,q:"The SCR multiplier adds 1 point deduction for every ____ overspent?",options:["£1m","£6.5m","£10m","£5m"],correct:"£6.5m",explanation:"+1 additional Point Deduction for every £6.5m overspent."},{id:55,q:"When are the sporting sanctions (such as points deductions) for an SCR Red Threshold breach officially applied?",options:["In the exact same season the financial breach occurred","At the start of the following competitive season","Only after a mandatory 2-year independent appeals process","They are suspended indefinitely if the club qualifies for European competition"],correct:"In the exact same season the financial breach occurred",explanation:"The new SCR rules are designed for immediate enforcement. Sanctions are imposed in the very same season the breach occurs to maintain sporting integrity."},{id:56,q:"Which Newcastle player was sold to Brighton to pass PSR?",options:["Elliot Anderson","Yankuba Minteh","Anthony Gordon","Bruno Guimaraes"],correct:"Yankuba Minteh",explanation:"Yankuba Minteh was sold to Brighton."},{id:57,q:"Which Newcastle player was sold to Forest to pass PSR?",options:["Sean Longstaff","Elliot Anderson","Lewis Miley","Dan Burn"],correct:"Elliot Anderson",explanation:"Elliot Anderson was sold to Nottingham Forest."},{id:58,q:"According to the 'Trial of the Century' dossier, the 115 financial charges brought against Manchester City span across which specific era?",options:["2009 to 2018","1992 to 2003","2016 to 2024","2000 to 2010"],correct:"2009 to 2018",explanation:"The unprecedented scale of the Premier League's allegations covers a massive nine-year window from 2009 to 2018."},{id:59,q:"In which upcoming season is the Premier League officially scheduled to transition away from the current PSR framework and fully implement the new Squad Cost Ratio (SCR) rules?",options:["The 2026/27 season","The 2024/25 season","The 2030/31 season","The transition has been permanently cancelled by the independent regulator"],correct:"The 2026/27 season",explanation:"The league is giving clubs a grace period to adjust their wage bills and amortisation schedules before SCR becomes the ultimate law in 26/27."},{id:60,q:"From the 2026/27 season, which specific financial regulatory framework is the new Squad Cost Ratio (SCR) officially replacing in the Premier League?",options:["Profit & Sustainability Rules (PSR)","Financial Fair Play (FFP)","Player Amortisation Limits","The 25-Man Squad Quotas"],correct:"Profit & Sustainability Rules (PSR)",explanation:"While 'FFP' is the general European media term, the Premier League currently operates strictly under PSR. From 2026/27, PSR is officially replaced by the new SCR rules."},{id:61,q:"What is 'Amortisation'?",options:["Paying a fee all at once","Spreading the transfer fee evenly over the contract length","A type of loan","A tax avoidance scheme"],correct:"Spreading the transfer fee evenly over the contract length",explanation:"Accounting rules allow clubs to spread the cost over the years of the contract."},{id:62,q:"SCENARIO: You sign a player for £100m on a 5-year deal. What is the annual cost on the books?",options:["£100m","£20m","£50m","£10m"],correct:"£20m",explanation:"£100m divided by 5 years = £20m per year."},{id:63,q:"What was the 'Chelsea Loophole'?",options:["Signing players to 8-year contracts to lower the annual amortisation cost","Registering new signings under an affiliated sister club to completely bypass PSR limits","Delaying the payment of massive transfer fees until the following financial fiscal year","Classifying massive signing bonuses as commercial expenses rather than sporting costs"],correct:"Signing players to 8-year contracts to lower the annual amortisation cost",explanation:"By using 8-year deals, Chelsea drastically reduced their annual amortisation charge."},{id:64,q:"SCENARIO: A player bought for £60m (5 years) flops. After 2 years, you sell him for £20m. What is the result?",options:["£20m Profit","Break Even","£16m Accounting LOSS","£40m Loss"],correct:"£16m Accounting LOSS",explanation:"Book Value after 2 years is £36m. Selling for £20m means a £16m loss (£20m - £36m)."},{id:65,q:"What is 'Negative Equity' in football?",options:["When a player's actual Market Value drops significantly below their current Book Value","When a club's total annual wage bill exceeds their combined commercial and broadcast revenue","When the remaining installments owed to the selling club are greater than the player's release clause","When the outstanding transfer installments owed to rival clubs exceed the team's available liquid cash reserves"],correct:"When a player's actual Market Value drops significantly below their current Book Value",explanation:"This traps the club: they cannot sell the player without realizing a financial loss."},{id:66,q:"Why was the Philippe Coutinho sale to Barcelona considered a 'Masterclass'?",options:["Barcelona overpaid","His Book Value was near zero, creating massive Pure Profit","He was an academy player","Because his image rights were retained by Liverpool post-sale"],correct:"His Book Value was near zero, creating massive Pure Profit",explanation:"Liverpool bought him cheap (£8.5m). Years later, his book value was £0, so the £142m fee was almost entirely profit."},{id:67,q:"What defines the 'Wage Trap'?",options:["Paying players too little","Being forced to keep deadwood players to avoid realizing an accounting loss","Players demanding bonuses","The salary cap"],correct:"Being forced to keep deadwood players to avoid realizing an accounting loss",explanation:"Clubs keep deadwood to avoid realizing the accounting loss."},{id:68,q:"If you extend a player's contract, what happens to the annual amortisation cost?",options:["It increases","It decreases","It stays the same","It doubles"],correct:"It decreases",explanation:"You spread the remaining value over more years, lowering the annual hit."},{id:69,q:"What rule change did UEFA introduce in 2024 regarding contracts?",options:["No limit on length","Amortisation capped at 5 years maximum","Contracts max 3 years","Amortisation banned"],correct:"Amortisation capped at 5 years maximum",explanation:"You can sign an 8-year deal, but you must spread the cost over only 5 years."},{id:70,q:"If a £100m player (5-year deal) leaves for free after 5 years, what is the accounting loss?",options:["£100m","£20m","£0","£50m"],correct:"£0",explanation:"His book value has fully amortised to zero. It is bad business, but not an accounting loss."},{id:71,q:"According to the 'Chelsea Loophole' case study, approximately how much did the club manage to spend on transfer fees while initially remaining compliant with financial rules?",options:["£1 billion","£800 million","£1.5 billion","£2 billion"],correct:"£1 billion",explanation:"By utilizing 8-year contracts to spread out the amortisation hits, Chelsea managed to spend an unprecedented £1bn on new talent."},{id:72,q:"When Liverpool originally signed Philippe Coutinho, making the initial investment that would eventually fund their Champions League-winning squad, what was his approximate transfer fee?",options:["£8.5m","£20m","£35m","£2.5m"],correct:"£8.5m",explanation:"Liverpool bought Coutinho for just £8.5m. Because the initial fee was so low, his Book Value dropped to near zero very quickly."},{id:73,q:"When Barcelona purchased Philippe Coutinho from Liverpool in 2018, what was the massive headline transfer fee that registered as almost entirely 'Pure Profit'?",options:["£142m","£105m","£198m","£80m"],correct:"£142m",explanation:"Barcelona paid £142m. Because Coutinho's Book Value was essentially £0 at the time, this massive fee was an incredible accounting windfall for Liverpool."},{id:74,q:"Who did Liverpool buy with the Coutinho money?",options:["Salah & Mane","Virgil van Dijk & Alisson Becker","Fabinho & Keita","Suarez & Carroll"],correct:"Virgil van Dijk & Alisson Becker",explanation:"The Coutinho sale funded VVD and Alisson."},{id:75,q:"MOGUL MATH: By exploiting the 'Chelsea Loophole' and signing a £100m player to an 8-year contract, what exact annual amortisation cost was recorded on the club's balance sheet?",options:["£12.5m","£20m","£8m","£100m"],correct:"£12.5m",explanation:"Instead of dividing £100m by 5 years (£20m/year), Chelsea divided it by 8 years, meaning a £100m player only cost them £12.5m per year on the books."},{id:76,q:"Under standard amortisation accounting, what happens to a player's 'Book Value' over the duration of their contract?",options:["It decreases steadily each year until it reaches zero at the end of the contract","It fluctuates up and down based on their performances and goals scored","It remains permanently fixed at the original purchase price until the player is sold","It increases annually in line with the Premier League's inflation index"],correct:"It decreases steadily each year until it reaches zero at the end of the contract",explanation:"Amortisation spreads the cost evenly. A £100m player on a 5-year deal loses £20m in 'Book Value' every single year until they are worth £0 on the books."},{id:77,q:"What specific risk does 'Negative Equity' pose during a transfer negotiation?",options:["The player becomes unsellable because any fee below book value triggers a PSR accounting loss","The player's image rights automatically revert to the original selling club","The player is ineligible for European competition until the book value hit is paid","The agent is prohibited from taking a fee until the asset is in the green"],correct:"The player becomes unsellable because any fee below book value triggers a PSR accounting loss",explanation:"Negative equity traps clubs; they must choose between keeping a non-performing player or taking a damaging financial hit on the books."},{id:78,q:"In the context of the 'Negative Equity' scenario, what is the critical difference between a player's 'Book Value' and their 'Market Value'?",options:["Book Value is a guaranteed accounting figure based on the amortised fee, while Market Value is simply what another club is currently willing to pay","Book Value dictates the player's weekly wage limit, while Market Value dictates their official release clause","Book Value is set by FIFA's TMS system, while Market Value is negotiated entirely by super-agents","Book Value includes the agent's commission and signing bonus, while Market Value only includes the base transfer fee"],correct:"Book Value is a guaranteed accounting figure based on the amortised fee, while Market Value is simply what another club is currently willing to pay",explanation:"A player might have a guaranteed Book Value of £36m on your accounting ledgers, but if they are a 'flop', their actual Market Value (what someone will pay you for them) might crash to £20m."},{id:79,q:"MOGUL DILEMMA: If you extend a flop's contract to lower annual amortisation, what is the primary business risk?",options:["You are locked into paying higher total wages over a longer period (The Wage Trap)","The club must immediately record the remaining book value as a 'Total Impairment' loss on the current year's ledger","UEFA will fine the club for 'Aggressive Accounting' and trigger a transfer ban","The player becomes a free agent immediately under the 1995 Bosman Ruling"],correct:"You are locked into paying higher total wages over a longer period (The Wage Trap)",explanation:"Accounting is a double-edged sword. Spreading the amortisation hit thinner often means paying millions in wages to a player who has no resale value."},{id:80,q:"When a player leaves for free after their contract fully expires, why is it not an accounting loss?",options:["Because the asset has been fully amortised to £0 on the books","Because UEFA regulations mandate that free transfers are excluded from PSR loss calculations","Because the club's insurance policy absorbs the remaining market value of the expired asset","Because the player's image rights automatically revert to the original selling club"],correct:"Because the asset has been fully amortised to £0 on the books",explanation:"If the contract is complete, the book value is zero. It is bad sport management, but neutral for FFP accounting."},{id:81,q:"What is the 'Golden Rule' of contract management?",options:["Buy low, sell high","Renew at 24 months, Sell at 18 months","Always sign 5-year deals","Never sell to rivals"],correct:"Renew at 24 months, Sell at 18 months",explanation:"Never let a player reach the final 12 months."},{id:82,q:"SCENARIO: Your star player enters the 'Danger Zone' (18 months left) and won't sign. What is the Mogul decision?",options:["Keep him and hope he re-signs","Sell immediately to maximize value","Play him in the reserves","Offer him double wages"],correct:"Sell immediately to maximize value",explanation:"You are in the Danger Zone. Sell now or lose the asset for free later."},{id:83,q:"What happens when a player enters the final 12 months of their contract?",options:["Their value increases","The player holds 100% of the leverage","The club can extend it automatically","FIFA intervenes"],correct:"The player holds 100% of the leverage",explanation:"The club is powerless; the player can leave for free in a year."},{id:84,q:"What did the 1995 Bosman Ruling legally establish in European football?",options:["That out-of-contract players can leave their club for £0 (Free Transfer)","The mandatory inclusion of fixed release clauses in all standard player contracts","The prohibition of Multi-Club Ownership (MCO) networks within the same domestic league","The enforcement of a strict 25-man squad limit across all UEFA competitions"],correct:"That out-of-contract players can leave their club for £0 (Free Transfer)",explanation:"It ended the system where clubs retained rights to out-of-contract players."},{id:85,q:"Why is a 'Free Transfer' (like Kylian Mbappé's move to Real Madrid) never actually free for the acquiring club?",options:["Because massive signing bonuses and highly inflated wages replace the traditional transfer fee","Because the acquiring club must still pay a mandatory 'development compensation' fee to the player's original academy","Because UEFA mandates a 15% luxury tax on all out-of-contract signings to maintain market stability","Because the player's commercial image rights must be legally bought out from their previous club's sponsors"],correct:"Because massive signing bonuses and highly inflated wages replace the traditional transfer fee",explanation:"Mbappé demanded a €100m+ signing bonus because there was no transfer fee."},{id:86,q:"What creates the 'English Tax' (inflated prices for Homegrown players)?",options:["They are better players","Scarcity of the 8 Homegrown slots","Media hype","Currency exchange rates"],correct:"Scarcity of the 8 Homegrown slots",explanation:"You legally need 8 HG players. Supply is low, demand is high = High Price."},{id:87,q:"Under Premier League registration rules, does a 'Homegrown' (HG) player have to be a British citizen?",options:["No, nationality is irrelevant; it strictly depends on where the player trained for 3 years before turning 21","Yes, the player must hold a valid UK passport or qualify for a Home Office work permit","No, but they must have made at least one senior competitive appearance for a British club before age 18","Yes, unless they are officially registered as an 'Under-21 Academy Scholar' on the league's centralized database"],correct:"No, nationality is irrelevant; it strictly depends on where the player trained for 3 years before turning 21",explanation:"It is based on where they trained for 3 years before age 21, not their passport."},{id:88,q:"Why did Cesc Fàbregas, a Spanish international, officially count as a 'Homegrown' player for Arsenal?",options:["Because Arsenal signed him at age 16, allowing him to train at an English club for 3 years prior to turning 21","Because Arsenal paid a mandatory 'Training Compensation' fee to the Spanish FA, which legally transferred his domestic registration rights","Because UEFA regulations allow clubs one 'Foreign Designated Player' to bypass the standard Homegrown quota","Because his international transfer was registered before the official 2010 Homegrown quota regulations were enacted"],correct:"Because Arsenal signed him at age 16, allowing him to train at an English club for 3 years prior to turning 21",explanation:"He trained at an English FA club for 3 seasons prior to turning 21."},{id:89,q:"What is the 'U21 Cheat Code' utilized by elite Sporting Directors in squad building?",options:["U21 players do NOT need to be registered in the strict 25-man Premier League squad limit","U21 players' wages are completely exempt from the club's annual PSR loss calculations","Clubs can automatically recall U21 players from domestic loans at any time outside of the transfer window","U21 players can be signed and officially registered at any point during the season, completely bypassing standard transfer windows"],correct:"U21 players do NOT need to be registered in the strict 25-man Premier League squad limit",explanation:"Elite clubs hoard young talent because they don't take up valuable squad slots."},{id:90,q:"Which Manchester United player famously left for free in 2022, costing the club an £89m asset?",options:["Paul Pogba","Romelu Lukaku","Ángel Di María","Mason Greenwood"],correct:"Paul Pogba",explanation:"Paul Pogba ran down his contract, leaving United with £0 return on their record signing."},{id:91,q:"What is the Premier League squad size limit?",options:["23","25","30","20"],correct:"25",explanation:"The limit is 25 players over the age of 21."},{id:92,q:"How many Homegrown (HG) players are required?",options:["4","6","8","10"],correct:"8",explanation:"At least 8 players must be Homegrown."},{id:93,q:"Under Premier League quota rules, what happens if a club cannot fill their 8 required Homegrown (HG) slots?",options:["The empty slots are forfeited, forcing the club to play the season with a reduced squad size","The club is handed a mandatory £5m 'Luxury Tax' fine by the FA for every missing player","The club faces an automatic 3-point deduction for failing to meet domestic development quotas","The club is legally forced to register Under-21 academy players on senior-level contracts to fill the void"],correct:"The empty slots are forfeited, forcing the club to play the season with a reduced squad size",explanation:"You must leave the slots empty (play with a smaller squad)."},{id:94,q:"Before the 1995 Bosman Ruling, what immense leverage did clubs have over players with expired contracts?",options:["They retained the player's registration and could demand a transfer fee even if the contract had ended","They possessed the legal right to trade the player's registration to a foreign club without requiring the player's personal consent","They were legally permitted to unilaterally extend any contract for one additional year at the same wage","They possessed the power to temporarily ban the player from domestic competition until a new deal was signed"],correct:"They retained the player's registration and could demand a transfer fee even if the contract had ended",explanation:"They retained the player's registration even after the contract expired."},{id:95,q:"Mogul Logic: When does club leverage begin to collapse?",options:["6 months","18-24 months","3 years","Never"],correct:"18-24 months",explanation:"In the 18-24 month window, leverage shifts to the player."},{id:96,q:"According to the Timeline of Leverage, what does the 'Amber Warning' at 24 months represent?",options:["The best time to sell","The last safe moment to renew before asset instability","The player becomes a free agent","The release clause activates"],correct:"The last safe moment to renew before asset instability",explanation:"24 months is the warning; beyond this, the asset value wobbles."},{id:97,q:"In football business terminology, what is the exact definition of a 'Free Agent'?",options:["A player whose contract has completely expired, leaving them without a club and free to sign anywhere","A player who has submitted a formal transfer request and waived their right to a loyalty bonus","An Under-21 academy graduate who does not take up a registered slot in the 25-man squad limit","A player whose current club has agreed to subsidize their wages while they play on loan elsewhere"],correct:"A player whose contract has completely expired, leaving them without a club and free to sign anywhere",explanation:"When the contract clock hits zero, the player becomes a 'Free Agent'. They hold all the leverage because acquiring clubs do not have to pay a transfer fee to sign them."},{id:98,q:"Which Arsenal player forced a swap deal by running down his contract?",options:["Ozil","Alexis Sánchez","Ramsey","Van Persie"],correct:"Alexis Sánchez",explanation:"Alexis Sánchez ran down his contract."},{id:99,q:"What specific legal framework did Jean-Marc Bosman use in 1995 to successfully sue his club and permanently dismantle the old transfer system?",options:["European Union labor laws guaranteeing freedom of movement for workers","The FIFA Code of Ethics regarding fair player compensation","The Court of Arbitration for Sport's guidelines on employment monopolies","The UEFA Financial Fair Play charter on restrictive asset retention"],correct:"European Union labor laws guaranteeing freedom of movement for workers",explanation:"Bosman successfully argued that retaining his registration after his contract expired violated EU labor laws regarding freedom of movement, giving birth to the modern 'Free Transfer'."},{id:100,q:"MOGUL MATH: The Premier League mandates a maximum of 17 'Open' slots for non-Homegrown players. If your club only has 5 eligible Homegrown players this season, what is the absolute maximum squad size you can legally register?",options:["22 players","25 players, but you must pay a luxury tax for the 3 missing HG slots","20 players","25 players, provided you fill the 3 missing slots with U21 Academy players"],correct:"22 players",explanation:"You can never exceed 17 Open slots. 17 Open + 5 Homegrown = a maximum squad size of 22. The 3 unfilled Homegrown slots simply vanish."}]}},lessonMap={1:{1:"topic-pitch-markings",2:"topic-teams-kits",3:"topic-guess-who",4:"topic-positions-roles",5:"topic-set-pieces",6:"topic-offside-rule"},2:{1:"topic-what-is-a-league",2:"topic-the-big-five",3:"topic-premier-league-era",4:"topic-english-traditions",5:"topic-champions-league",6:"topic-world-cup"},3:{1:"topic-modern-formations",2:"topic-high-press",3:"topic-chaos-window",4:"topic-set-play-mastery",5:"topic-module-3-total-football"},4:{1:"topic-market",2:"topic-takeovers",3:"topic-ffp",4:"topic-amortisation",5:"topic-squad-quotas"}};function getNextConfig(e,t,a){return t<a?{label:'NEXT TOPIC <i class="fas fa-arrow-right"></i>',action:function(){validateUniversalLesson(t+1,e)}}:{label:'FINAL EXAM <i class="fas fa-trophy"></i>',action:function(){validateUniversalLesson(99,e)}}}function validateUniversalLesson(e,t){if(void 0===InputGuard||!InputGuard.canInteract())return;InputGuard.lock(1e4);const a=document.querySelector("#univ-content-area .lesson-complete-check");if(a&&!a.checked)return void showOffsideWarning("DECISION: NO GOAL","(Check the box to stay onside)");const o=document.getElementById("var-overlay"),i=o?o.querySelector("p"):null,n=()=>{void 0!==InputGuard&&InputGuard.unlock(),suppressCompletionAudio=!0,void 0!==FXController&&"function"==typeof FXController.clearOverlay&&FXController.clearOverlay(),o&&o.classList.remove("active","visible","var-approved"),"function"==typeof loadUniversalLesson&&"function"==typeof showScreen&&("function"==typeof fadeAndStopCrowd&&fadeAndStopCrowd(2),setTimeout(()=>{99===e?showScreen(`topic-module-${t}-exam-lobby`):loadUniversalLesson(t,e)},50))};if(!o||void 0===FXTimeline||"function"!=typeof FXTimeline.play)return"function"==typeof fadeAndStopCrowd&&fadeAndStopCrowd(2),void n();const r=e=>{"function"==typeof playStadiumFX&&playStadiumFX(e)};FXTimeline.play([{type:"callback",fn:()=>{o.classList.remove("var-approved"),i&&(i.innerText="CHECKING DECISION...")}},{type:"overlay",element:o},{type:"callback",fn:()=>r("var-start")},{type:"delay",duration:2100},{type:"callback",fn:()=>r("var-build")},{type:"delay",duration:2400},{type:"callback",fn:()=>{o.classList.add("var-approved"),i&&(i.innerText="DECISION: ONSIDE"),r("var-success")}},{type:"delay",duration:4e3},{type:"callback",fn:n}])}function loadUniversalLesson(e,t){suppressCompletionAudio=!1,console.log(`Loading Lesson: Mod ${e}, Topic ${t}`);const a={1:["topic-pitch-markings","topic-teams-kits","topic-guess-who","topic-positions-roles","topic-set-pieces","topic-offside-rule"],2:["topic-what-is-a-league","topic-the-big-five","topic-premier-league-era","topic-english-traditions","topic-champions-league","topic-world-cup"],3:["topic-modern-formations","topic-high-press","topic-chaos-window","topic-set-play-mastery","topic-module-3-total-football"],4:["topic-market","topic-takeovers","topic-ffp","topic-amortisation","topic-squad-quotas"]};if(!a[e]||!a[e][t-1])return void console.error("Lesson ID not found.");const o=a[e][t-1],i=document.getElementById(o);if(!i)return;document.getElementById("universal-lesson-viewer");const n=document.getElementById("univ-content-area"),r=document.getElementById("univ-title"),s=document.getElementById("univ-back-btn"),l=document.querySelector("#universal-lesson-viewer .nav-group-left"),c=document.getElementById("univ-next-btn"),d=i.querySelector(".lesson-card");n.innerHTML=d?d.innerHTML:"Error loading content.";const h=n.querySelector(".lesson-complete-check"),u=`${e}-${t}`;Array.isArray(academyProgress.completedLessons)||(academyProgress.completedLessons=[]),h&&(h.checked=academyProgress.completedLessons.includes(u),h.onchange=function(t){const o=t.target.checked;if(!u)return;o?academyProgress.completedLessons.includes(u)||academyProgress.completedLessons.push(u):academyProgress.completedLessons=academyProgress.completedLessons.filter(e=>e!==u);const i=Array.isArray(a[e])?a[e].length:0,n=academyProgress.completedLessons.filter(t=>"string"==typeof t&&t.startsWith(`${e}-`)).length===i,r=academyProgress.unlockedModules?.includes(e);if(academyProgress.unlockedModules||(academyProgress.unlockedModules=[]),o&&n&&!r){academyProgress.unlockedModules.push(e),academyProgress.unlockedModules=Array.from(new Set(academyProgress.unlockedModules));const t=document.getElementById("univ-next-btn"),a=document.querySelector(".lesson-bottom-nav .next-btn");t&&(t.classList.remove("exam-ready-burst"),t.offsetWidth,t.classList.add("exam-ready-burst")),a&&(a.classList.remove("exam-ready-burst"),a.offsetWidth,a.classList.add("exam-ready-burst")),handleModuleCompletion(e,!0)}"function"==typeof saveProgressToStorage&&saveProgressToStorage(academyProgress),updateModuleProgressBars(),"function"==typeof updateTopicLocks&&updateTopicLocks()});const p=document.getElementById("univ-container");p.classList.remove("theme-foundation","theme-pro","theme-tactician","theme-mogul");let m="FOUNDATION LEVEL",g="theme-foundation";2===e&&(g="theme-pro",m="PRO LEVEL"),3===e&&(g="theme-tactician",m="TACTICIAN LEVEL"),4===e&&(g="theme-mogul",m="MOGUL LEVEL"),p.classList.add(g);const f=i.querySelector(".lesson-title-text, .foundation-title");r.innerText=f?f.innerText:"Lesson";const y=document.getElementById("univ-module-badge");y&&(y.innerText=m,y.className=`module-badge ${g}`);const v=document.getElementById("univ-topic-badge");v&&(v.innerText=`TOPIC ${t}`,v.className=`topic-badge ${g}`);const b=a[e].length,w=getNextConfig(e,t,b);s.onclick=function(){showScreen(`topic-module-${e}-hub`)};let T=document.getElementById("univ-prev-btn");T||(T=document.createElement("button"),T.id="univ-prev-btn",T.className="back-btn",l.appendChild(T)),t>1?(T.style.display="inline-flex",T.innerHTML='<i class="fas fa-arrow-left"></i> PREV',T.onclick=function(){loadUniversalLesson(e,t-1)}):T.style.display="none";const k=c.cloneNode(!0);c.parentNode.replaceChild(k,c);const A=document.getElementById("univ-next-btn");A.innerHTML=w.label,A.onclick=w.action;let x=document.querySelector(".lesson-bottom-nav");x&&x.remove();let S=document.createElement("div");S.className="lesson-bottom-nav flex-column-center";let C=document.createElement("div");C.className="var-console",C.innerHTML='\n        <span class="var-dot"></span>\n        <span class="var-text">[VAR_PROTOCOL] : VERIFICATION REQUIRED</span>\n    ';let L=document.createElement("button");L.className="next-btn",L.innerHTML=w.label,L.onclick=w.action,S.appendChild(C),S.appendChild(L),n.appendChild(S),showScreen("universal-lesson-viewer")}let shotClockInterval,examSession={module:0,questions:[],currentIndex:0,score:0,strikes:0,currentStreak:0};function attemptExamEntry(e){console.log("🔐 FORCE OPENING EXAM: Module "+e);showScreen(`topic-module-${e}-exam-lobby`)}async function startExam(e){if(console.log("KICK OFF: Module "+e),"function"==typeof preloadAudioBuffers)try{await preloadAudioBuffers()}catch(e){console.error("Audio preload failed:",e)}const t="mod"+e;if(!modules[t])return console.error("CRITICAL ERROR: Data for "+t+" is missing."),void alert("System Error: Exam data not found.");let a=[...modules[t].questions];for(let e=a.length-1;e>0;e--){const t=Math.floor(Math.random()*(e+1));[a[e],a[t]]=[a[t],a[e]]}examSession.questions=a.slice(0,15),examSession.module=e,examSession.currentIndex=0,examSession.score=0,examSession.strikes=0,examSession.currentStreak=0,examSession.timeExpired=!1;const o=document.querySelector(".exam-arena-container");o&&o.classList.remove("room-shake"),showScreen("exam-interface"),renderExamQuestion()}function checkExamAnswer(e,t,a){if(!InputGuard.canInteract())return;InputGuard.lock(3e3),clearInterval(shotClockInterval),document.querySelectorAll("#exam-options .topic-card").forEach(e=>{e.onclick=null,e!==a&&e.classList.add("dimmed-option")});const o=examSession.questions[examSession.currentIndex];let i=!1;i="number"==typeof o.correct?t===o.correct:e===o.correct,a.classList.add("flash-white"),setTimeout(()=>{if(a.classList.remove("flash-white"),i)a.classList.add("correct"),examSession.score++,examSession.currentStreak++;else{a.classList.add("incorrect"),examSession.currentStreak=0;const e=document.querySelector(".exam-arena-container");e.classList.remove("room-shake"),e.offsetWidth,e.classList.add("room-shake")}},800),setTimeout(()=>{if(i)"function"==typeof playAcademySound&&playAcademySound("correct",{volume:.7,duration:4500}),showCelebrationOverlay(examSession.currentStreak);else{"function"==typeof playAcademySound&&playAcademySound("wrong");let e=o.explanation||"Tactical error.";4===examSession.module&&(examSession.strikes=3),showErrorBufferOverlay(e)}},2e3)}function startShotClock(){const e=document.getElementById("shot-clock-text"),t=document.getElementById("timer-bar-fill");e&&(e.innerText="15",e.style.color="#fff",e.classList.remove("panic-pulse")),t&&(t.style.width="100%",t.style.background="var(--brand-success)");let a=15;clearInterval(shotClockInterval),shotClockInterval=setInterval(()=>{if(a--,e&&(e.innerText=(a<10?"0":"")+a),t){const o=a/15*100;t.style.width=o+"%",a<=5&&(t.style.background="#ff4444",e&&(e.style.color="#ff4444",e.classList.add("panic-pulse")))}a<=0&&(clearInterval(shotClockInterval),handleTimeWasting())},1e3)}function stopShotClock(){clearInterval(shotClockInterval)}function handleTimeWasting(){"function"==typeof playAcademySound&&playAcademySound("whistle",{duration:1200}),handleRefereeDiscipline("Time Wasting (15s Limit)")}function renderExamQuestion(){if(!examSession.questions||0===examSession.questions.length)return void console.error("No questions loaded.");const e=examSession.questions[examSession.currentIndex],t=document.getElementById("exam-q-text"),a=document.getElementById("question-container"),o=document.getElementById("exam-options");a.classList.remove("room-shake"),t.classList.remove("slide-in-anim"),o.classList.remove("slide-in-anim"),t.offsetWidth,t.classList.add("slide-in-anim"),o.classList.add("slide-in-anim");const i=e.q||e.question||"Question text missing";t.innerHTML=i,document.getElementById("exam-progress-text").innerText=`QUESTION ${examSession.currentIndex+1} OF 15`,document.getElementById("exam-current-score").innerText=examSession.score,o.innerHTML="",startShotClock();let n=e.options.map((e,t)=>({text:e,originalIndex:t}));n.sort(()=>Math.random()-.5),n.forEach(e=>{const t=document.createElement("div");t.className="topic-card exam-option",t.innerHTML=`<h3 class="exam-option-text">${e.text}</h3>`,t.onclick=function(){checkExamAnswer(e.text,e.originalIndex,t)},o.appendChild(t)})}function showCelebrationOverlay(e){const t=document.getElementById("booking-overlay"),a=document.getElementById("referee-message"),o=document.getElementById("physical-card-element");resetOverlayState(t),o.classList.remove("active-red-card","active-yellow-card"),t.classList.add("active");let i="";if(e<=5)for(let t=0;t<e;t++)i+="⚽ ";else i=`🔥 x${e}`;let n="GOAL!",r="Clinical Finish",s="overlay-green";2===e?(n="THE BRACE!",r="Two in a row!"):3===e?(n="HAT-TRICK!",r="World Class!",s="overlay-blue"):4===e?(n="THE HAUL!",r="Dominating!",s="overlay-gold"):e>=5&&(n="UNSTOPPABLE!",r="God Mode Active",s="overlay-purple"),t.classList.add(s),a.innerHTML=`\n        <div class="celeb-icon">${i}</div>\n        <div class="celeb-title">${n}</div>\n        <div class="celeb-subtitle">${r}</div>\n    `,setTimeout(()=>{t.classList.remove("active"),"function"==typeof fadeAndStopCrowd&&fadeAndStopCrowd(1.5),proceedExam()},4e3)}function showErrorBufferOverlay(e){const t=document.getElementById("booking-overlay"),a=document.getElementById("referee-message"),o=document.getElementById("physical-card-element");resetOverlayState(t),o.classList.remove("active-red-card","active-yellow-card"),t.classList.add("active","overlay-red-mist"),a.innerHTML='\n        <div class="own-goal-icon">⚽</div>\n        <div class="own-goal-title">OWN GOAL!</div>\n        <div class="own-goal-subtitle">Tactical Error Committed</div>\n    ',setTimeout(()=>{handleRefereeDiscipline(e)},4e3)}let refereeTimeouts=[];function clearRefereeTimeouts(){refereeTimeouts.forEach(e=>clearTimeout(e)),refereeTimeouts=[]}function handleRefereeDiscipline(e){clearRefereeTimeouts();const t=document.getElementById("referee-message"),a=document.getElementById("physical-card-element"),o=document.getElementById("booking-overlay");if(resetOverlayState(o),o.classList.add("active","overlay-solid-black"),1===examSession.module?examSession.strikes++:2===examSession.module?0===examSession.strikes?examSession.strikes=Math.random()<.5?1:2:examSession.strikes++:3===examSession.module&&(0===examSession.strikes?examSession.strikes=2:examSession.strikes=3),examSession.strikes>3&&(examSession.strikes=3),a.classList.remove("card-hidden","active-red-card","active-yellow-card"),1===examSession.strikes)"function"==typeof playAcademySound&&(playAcademySound("whistle",{overlap:!0,volume:.6,duration:1200}),refereeTimeouts.push(setTimeout(()=>{playAcademySound("vogWarning",{stadium:!0})},1400))),t.innerHTML=`\n            <div class="flag-assembly-wrapper">\n                <div class="flag-assembly">\n                    <div class="flag-pole"></div>\n                    <div class="flag-fabric"></div>\n                </div>\n            </div>\n            <div class="referee-warning-title">REFEREE WARNING</div>\n            <div class="referee-warning-text">${e}</div>\n            <div class="referee-warning-subtext">"Watch your step."</div>\n        `,refereeTimeouts.push(setTimeout(()=>{o.classList.remove("active"),proceedExam()},5e3));else if(2===examSession.strikes)"function"==typeof playAcademySound&&(playAcademySound("whistle",{overlap:!0,volume:.6,duration:1200}),refereeTimeouts.push(setTimeout(()=>{playAcademySound("vogYellow",{stadium:!0})},1400))),a.classList.add("active-yellow-card"),t.innerHTML=`\n            <div class="referee-yellow-title">YELLOW CARD</div>\n            <div class="referee-yellow-text">${e}</div>\n            <div class="referee-yellow-subtext">"Tactical Amateurism."</div>\n        `,refereeTimeouts.push(setTimeout(()=>{o.classList.remove("active"),proceedExam()},5e3));else if(4===examSession.module)triggerRedCard(e);else{"function"==typeof playAcademySound&&(playAcademySound("whistle",{overlap:!0,volume:.6,duration:1200}),refereeTimeouts.push(setTimeout(()=>{playAcademySound("vogSecondYellow",{stadium:!0})},1400)));const o=5700,i=9200;a.classList.add("active-yellow-card"),t.innerHTML=`\n                <div class="referee-yellow-title">YELLOW CARD</div>\n                <div class="referee-yellow-text">${e}</div>\n                <div class="referee-yellow-subtext">"Late challenge."</div>\n            `,refereeTimeouts.push(setTimeout(()=>{a.classList.add("card-hidden"),t.innerHTML='\n                    <div class="second-yellow-cards">\n                        <div class="second-yellow-card-item"></div>\n                        <div class="second-yellow-card-item"></div>\n                    </div>\n                    <div class="second-yellow-title">SECOND YELLOW!</div>\n                    <div class="second-yellow-subtext">You\'re off.</div>\n                '},o)),refereeTimeouts.push(setTimeout(()=>{a.classList.remove("card-hidden"),triggerRedCard(e,!0)},i))}}async function triggerRedCard(e,t=!1){clearRefereeTimeouts();const a=document.getElementById("referee-message"),o=document.getElementById("physical-card-element"),i=document.getElementById("booking-overlay");e||(e="Dismissed from the Academy.");let n="";if(examSession.module>1){let e=executeRelegation(examSession.module);n="IMMUNE"===e?'<span class="relegation-warning-text text-rank-purple">PUNISHMENT WAIVED: MOGUL IMMUNITY ACTIVE.</span>':`<span class="relegation-warning-text">PUNISHMENT: ELITE STATUS REVOKED.<br>RELEGATED TO ${e}.</span>`}o.classList.remove("active-yellow-card"),o.classList.add("active-red-card"),a.innerHTML=`\n        <div class="red-card-title">RED CARD!</div>\n        <div class="red-card-subtitle">SENT OFF.</div>\n        <div class="modal-danger-body">\n            ${e}\n            ${n}\n        </div>\n        <div class="modal-return-box">\n            <i class="fas fa-arrow-left"></i> Escorted back to Main Menu...\n        </div>\n    `,i.classList.add("active"),t||"function"==typeof playAcademySound&&(playAcademySound("whistle",{volume:.7,duration:1200}),setTimeout(()=>{playAcademySound("vogRed",{stadium:!0})},1400)),setTimeout(()=>{i.classList.remove("active"),showScreen("home-screen")},6e3)}function proceedExam(){examSession.currentIndex++,examSession.currentIndex>=examSession.questions.length?finishExam():renderExamQuestion()}function executeRelegation(e){let t="FOUNDATION";return academyProgress.isGraduated?"IMMUNE":(2===e?(academyProgress.module1Score=0,academyProgress.module2Score=0,academyProgress.module3Score=0,academyProgress.module4Score=0,t="FOUNDATION"):3===e?(academyProgress.module2Score=0,academyProgress.module3Score=0,academyProgress.module4Score=0,t="PRO"):4===e&&(academyProgress.module3Score=0,academyProgress.module4Score=0,t="TACTICIAN"),updateHubUI(),t)}function finishExam(){const e=document.getElementById("results-modal"),t=document.getElementById("results-score-box"),a=document.getElementById("results-title"),o=document.getElementById("results-body"),i=document.getElementById("results-action-btn");t.innerText=`${examSession.score}/15`;a.classList.remove("text-rank-green","text-rank-gold","text-rank-purple","text-rank-red"),i.classList.remove("btn-rank-green","btn-rank-gold","btn-rank-purple","btn-rank-red");let n="text-rank-green",r="btn-rank-green",s="1ST TEAM";if(examSession.score>=14)"function"==typeof playAcademySound&&playAcademySound("correct"),1===examSession.module&&examSession.score>academyProgress.module1Score&&(academyProgress.module1Score=examSession.score),2===examSession.module&&examSession.score>academyProgress.module2Score&&(academyProgress.module2Score=examSession.score),3===examSession.module&&examSession.score>academyProgress.module3Score&&(academyProgress.module3Score=examSession.score),4===examSession.module&&examSession.score>academyProgress.module4Score&&(academyProgress.module4Score=examSession.score),15===examSession.score&&(4===examSession.module?(s="MOGUL",n="text-rank-purple",r="btn-rank-purple",academyProgress.isGraduated=!0):(s="CAPTAIN",n="text-rank-gold",r="btn-rank-gold")),a.innerText="PROMOTED! 🏆",a.classList.add(n),i.classList.add(r),o.innerHTML=`\n            <div class="rank-status-text ${n}">RANK: ${s}</div>\n            Outstanding knowledge.\n        `,i.innerText="RETURN TO ACADEMY",saveProgressToStorage(academyProgress),updateHubUI(),4===examSession.module&&15===examSession.score&&setTimeout(()=>{EventDirector.play("graduation")},3e3);else if("function"==typeof playAcademySound&&playAcademySound("wrong"),n="text-rank-red",r="btn-rank-red",a.innerText="RELEGATED ⬇️",a.classList.add(n),i.classList.add(r),examSession.module>1){let e=executeRelegation(examSession.module);"IMMUNE"===e?(o.innerHTML='\n                    <div class="rank-status-text text-rank-purple">RANK: MOGUL (IMMUNE)</div>\n                    You failed the evaluation, but your permanent Mogul status protects you from relegation. You have Free Reign.\n                ',i.innerText="RETURN TO ACADEMY"):(o.innerHTML=`\n                    <div class="rank-status-text text-rank-red">RANK: STRIPPED</div>\n                    You failed the evaluation. Your Elite status has been revoked. You are relegated back to ${e} Level.\n                `,i.innerText="RETURN TO "+e)}else o.innerHTML='\n                <div class="rank-status-text text-rank-red">RANK: IMPACT SUB</div>\n                Not enough points. Return to the dressing room and study the tapes.\n            ',i.innerText="RETURN TO ACADEMY";e.classList.add("active")}function closeResults(){document.getElementById("results-modal").classList.remove("active"),showScreen("home-screen")}function resetOverlayState(e){e&&(e.classList.remove("active"),e.style.background="",e.classList.remove("overlay-green","overlay-blue","overlay-gold","overlay-purple","overlay-red-mist","overlay-solid-black"))}function openRefereeBriefing(e){const t=document.getElementById("referee-briefing-modal"),a=document.getElementById("referee-briefing-content");let o="",i="",n="",r="";1===e&&(r="FOUNDATION LEVEL",o="Your 1st incorrect answer. A free pass, but watch your step.",i="Your 2nd incorrect answer. You are on thin ice.",n="Your 3rd incorrect answer. You are dismissed from the exam."),2===e&&(r="PRO LEVEL",o="<em>Unpredictable.</em> The referee may skip your warning.",i="Your 1st or 2nd incorrect answer. Punishment escalates faster.",n="Exam failed. <span class='text-warning'>Consequence: Relegated to Foundation.</span>"),3===e&&(r="TACTICIAN LEVEL",o="<span class='text-warning'>NONE.</span>",i="Your 1st incorrect answer. Instant booking.",n="Exam failed. <span class='text-warning'>Consequence: Relegated to Pro.</span>"),4===e&&(r="BOARDROOM LEVEL",o="<span class='text-warning'>NONE.</span>",i="<span class='text-warning'>NONE.</span>",n="<span class='text-warning'>SUDDEN DEATH.</span> Any incorrect answer results in immediate dismissal."),document.getElementById("referee-briefing-title").innerText=`REFEREE BRIEFING: ${r}`,a.innerHTML=`\n        <div class="briefing-section">\n            <div class="briefing-icon">🗣️ THE WHISTLE (WARNING)</div>\n            <div class="briefing-real"><strong>Real Football:</strong> The referee verbally cautions a player to calm down before resorting to cards.</div>\n            <div class="briefing-academy"><strong>The Academy:</strong> ${o}</div>\n        </div>\n\n        <div class="briefing-section">\n            <div class="briefing-icon text-warning">🟨 YELLOW CARD</div>\n            <div class="briefing-real"><strong>Real Football:</strong> A severe formal caution for a reckless foul or unsporting behavior. The player stays on the pitch, but is now walking a tightrope. One more foul equals ejection!</div>\n            <div class="briefing-academy"><strong>The Academy:</strong> ${i}</div>\n        </div>\n\n        <div class="briefing-section">\n            <div class="briefing-icon text-danger">🟥 RED CARD</div>\n            <div class="briefing-real"><strong>Real Football:</strong> Immediate ejection from the match for a dangerous foul or a second Yellow. The player goes to the locker room, and their team must survive the rest of the game with one less player.</div>\n            <div class="briefing-academy"><strong>The Academy:</strong> ${n}</div>\n        </div>\n    `,t.classList.add("active")}function closeRefereeBriefing(){document.getElementById("referee-briefing-modal").classList.remove("active")}function playTierUnlockChime(e){try{const t=getAudioContext();"suspended"===t.state&&t.resume();const a=t.createOscillator(),o=t.createGain(),i=400+150*e;a.type="sine",a.frequency.setValueAtTime(i,t.currentTime),a.frequency.exponentialRampToValueAtTime(1.5*i,t.currentTime+.4),o.gain.setValueAtTime(0,t.currentTime),o.gain.linearRampToValueAtTime(.3,t.currentTime+.1),o.gain.exponentialRampToValueAtTime(.01,t.currentTime+1),a.connect(o),o.connect(t.destination),a.start(),a.stop(t.currentTime+1.2)}catch(e){console.warn("Chime failed",e)}}const previousBadgeStates={1:!1,2:!1,3:!1,4:!1};let isInitialLoad=!0;function updateHubUI(){if(void 0===academyProgress)return;const e=academyProgress.module1Score+academyProgress.module2Score+academyProgress.module3Score+academyProgress.module4Score,t=document.getElementById("current-score-val");t&&(t.innerText=e);const a=!!academyProgress.isPremiumUser,o=!!academyProgress.isGraduated;[{id:"module-2-gateway",moduleScore:academyProgress.module1Score,requiresPremium:!1},{id:"module-3-gateway-card",moduleScore:academyProgress.module2Score,requiresPremium:!0},{id:"module-4-gateway",moduleScore:academyProgress.module3Score,requiresPremium:!0}].forEach(e=>{const t=document.getElementById(e.id);if(!t)return;const i=e.moduleScore>=14,n=!e.requiresPremium||a,r=o||i&&n;t.classList.toggle("locked",!r)});const i=document.querySelectorAll(".badge-pill-container .badge-item");if(i.length<5)return;const n=["streak","foundation","pro","tactician","mogul"];i.forEach((e,t)=>{n[t]&&!e.dataset.tier&&e.setAttribute("data-tier",n[t])});const r={1:o||academyProgress.module1Score>=14,2:o||academyProgress.module2Score>=14,3:o||academyProgress.module3Score>=14,4:o},s=(e,t,a)=>{const o=i[e];if(!o)return;const n=previousBadgeStates[a];o.setAttribute("data-state",t?"active":"locked"),!t||n||isInitialLoad||(o.classList.add("just-unlocked"),"function"==typeof playTierUnlockChime&&playTierUnlockChime(a),setTimeout(()=>{o.classList.remove("just-unlocked")},1500)),previousBadgeStates[a]=t};s(1,r[1],1),s(2,r[2],2),s(3,r[3],3);const l=previousBadgeStates[4];s(4,r[4],4);const c=r[4]&&!l,d=i[4];d&&d.classList.toggle("mogul-verified",r[4]),c&&!isInitialLoad&&setTimeout(()=>{"function"==typeof playAcademySound&&playAcademySound("correct",{volume:.8}),[1,2,3,4].forEach((e,t)=>{const a=i[t];a&&setTimeout(()=>{a.classList.add("badge-ripple"),setTimeout(()=>a.classList.remove("badge-ripple"),600)},150*t)})},100),updateModuleProgressBars(),"function"==typeof updateTopicLocks&&updateTopicLocks(),isInitialLoad=!1}function updateTopicLocks(){if(void 0===academyProgress||!Array.isArray(academyProgress.completedLessons))return;const e={1:6,2:6,3:5,4:5};for(let t=1;t<=4;t++){const a=e[t];let o=!0;for(let e=1;e<=a;e++){const a=document.querySelector(`.topic-card[data-module="${t}"][data-topic="${e}"]`);if(!a)continue;const i=`${t}-${e-1}`,n=`${t}-${e}`,r=1===e||academyProgress.completedLessons.includes(i);a.classList.toggle("locked",!r&&!academyProgress.isGraduated),academyProgress.completedLessons.includes(n)||(o=!1)}const i=document.querySelector(`.topic-card.level-exam[data-module="${t}"]`);i&&i.classList.toggle("locked",!o&&!academyProgress.isGraduated)}}function handleModuleCompletion(e,t){suppressCompletionAudio||t&&(academyProgress.completedModules||(academyProgress.completedModules=[]),academyProgress.completedModules.includes(e)||(academyProgress.completedModules.push(e),academyProgress.completedModules=Array.from(new Set(academyProgress.completedModules)),"function"==typeof showGraduationCeremony&&showGraduationCeremony(e)))}function updateModuleProgressBars(){if(void 0===academyProgress||!Array.isArray(academyProgress.completedLessons))return;const e={1:6,2:6,3:5,4:5};for(let t=1;t<=4;t++){const a=academyProgress.completedLessons.filter(e=>"string"==typeof e&&e.startsWith(`${t}-`)).length,o=e[t]||1,i=document.getElementById(`module-${t}-count`),n=document.getElementById(`module-${t}-progress-bar`);if(i&&(i.innerText=`${a} / ${o} TOPICS`),n){const e=Math.round(a/o*100),i=e>=100,r="true"===n.dataset.complete;n.style.width!==`${e}%`&&(n.style.width=`${e}%`),i&&!r&&(null!==n.offsetParent&&(n.classList.add("complete"),handleModuleCompletion(t,!0),setTimeout(()=>{n.classList.remove("complete")},3500)),n.dataset.complete="true"),i||(n.dataset.complete="false")}}}function initAcademy(){console.log("⚡ ACADEMY SYSTEM ONLINE");const e=loadProgressFromStorage();e?(academyProgress=e,console.log("💾 Save Data Loaded:",academyProgress)):console.log("🆕 New User Session Started"),updateHubUI()}function handleCardActivation(e){if("keydown"===e.type&&"Enter"!==e.key&&" "!==e.key)return;const t=e.target.closest(".topic-card");if(!t)return;const a=!!t.dataset.topic,o="exam"===t.dataset.action;if(!a&&!o)return;"keydown"===e.type&&" "===e.key&&e.preventDefault();const i=parseInt(t.dataset.module,10);if(i)if(t.classList.contains("locked"))showOffsideWarning("ACCESS DENIED","Complete the previous lessons to unlock this section.");else if(o)attemptExamEntry(i);else if(a){loadUniversalLesson(i,parseInt(t.dataset.topic,10))}}academyProgress.completedModules||(academyProgress.completedModules=[]),document.body.addEventListener("click",handleCardActivation),document.body.addEventListener("keydown",handleCardActivation),document.addEventListener("DOMContentLoaded",initAcademy);const modalOverlay=document.getElementById("modal-overlay"),modalBody=document.getElementById("modal-body"),modalTitle=document.getElementById("modal-title");let lastFocusedElement=null;function openModal(e,t="Expanded Content View"){lastFocusedElement=document.activeElement,modalTitle&&(modalTitle.textContent=t),modalBody.innerHTML="",modalBody.appendChild(e),modalOverlay.style.display="flex",modalOverlay.offsetWidth,modalOverlay.classList.add("active"),document.body.classList.add("modal-open"),modalOverlay.setAttribute("aria-hidden","false"),trapFocus()}function closeModal(){modalOverlay.classList.contains("active")&&(modalOverlay.classList.remove("active"),document.body.classList.remove("modal-open"),modalOverlay.setAttribute("aria-hidden","true"),setTimeout(()=>{const e=modalBody.querySelector("iframe");e&&(e.src=e.src),modalBody.innerHTML="",modalOverlay.style.display="none",lastFocusedElement&&lastFocusedElement.focus()},300))}function trapFocus(){const e=modalOverlay.querySelectorAll('\n        a[href], \n        button:not([disabled]), \n        textarea, \n        input, \n        select, \n        iframe,\n        [tabindex]:not([tabindex="-1"])\n    ');if(0===e.length)return;const t=e[0],a=e[e.length-1];function o(e){"Tab"===e.key&&(e.shiftKey?document.activeElement===t&&(e.preventDefault(),a.focus()):document.activeElement===a&&(e.preventDefault(),t.focus()))}t.focus(),modalOverlay.addEventListener("keydown",o),modalOverlay.addEventListener("transitionend",function e(){modalOverlay.classList.contains("active")||(modalOverlay.removeEventListener("keydown",o),modalOverlay.removeEventListener("transitionend",e))})}modalOverlay.addEventListener("click",function(e){(e.target===modalOverlay||e.target.closest(".modal-close"))&&closeModal()}),document.addEventListener("keydown",function(e){"Escape"===e.key&&modalOverlay.classList.contains("active")&&closeModal()});const closeBtn=document.querySelector(".modal-close");function openYouTubeVideo(e,t="Video Player"){const a=document.createElement("iframe");a.src=`https://www.youtube.com/embed/${e}?autoplay=1`,a.width="100%",a.height="500",a.style.border="none",a.style.borderRadius="12px",a.style.boxShadow="0 10px 30px rgba(0,0,0,0.8)",a.setAttribute("allowfullscreen",""),a.setAttribute("allow","autoplay"),a.tabIndex=0,openModal(a,t)}function openDeepDive(e){const t=e.querySelector(".deep-dive-content");if(!t)return;const a=e.getAttribute("data-deep-dive-title")||"Scouting Report: Deep Dive",o=document.createElement("div");o.className="deep-dive-wrapper";const i=document.createElement("div");i.className="deep-dive-body";const n=e.closest('[class*="theme-"]');if(n){const e=Array.from(n.classList).find(e=>e.startsWith("theme-"));e&&o.classList.add(e)}const r=t.cloneNode(!0);r.classList.remove("hidden"),i.appendChild(r),o.appendChild(i),requestAnimationFrame(()=>{if(i.scrollHeight>i.clientHeight){const e=document.createElement("div");e.className="scroll-hint",e.innerText="⬇ SCROLL",o.appendChild(e)}}),openModal(o,a)}closeBtn&&closeBtn.addEventListener("keydown",function(e){"Enter"!==e.key&&" "!==e.key||(e.preventDefault(),closeModal())}),document.addEventListener("click",function(e){if(e.target&&e.target.classList.contains("zoomable-image")){const t=document.createElement("img");t.src=e.target.src,t.style.maxWidth="100%",t.style.maxHeight="90vh",t.style.objectFit="contain",t.style.borderRadius="8px",t.style.boxShadow="0 0 50px rgba(0,0,0,0.8)",t.tabIndex=0,openModal(t,"Expanded Image View")}}),document.addEventListener("click",function(e){const t=e.target.closest(".video-trigger");if(!t)return;const a=t.getAttribute("data-video-id"),o=t.getAttribute("data-video-title");a&&openYouTubeVideo(a,o)}),document.addEventListener("click",function(e){const t=e.target.closest(".deep-dive-trigger");t&&(e.target.closest("button, a, input, label")||openDeepDive(t))}),document.addEventListener("keydown",function(e){if("Enter"!==e.key&&" "!==e.key)return;const t=e.target.closest(".deep-dive-trigger");t&&(e.preventDefault(),openDeepDive(t))}),document.addEventListener("mousemove",e=>{}),document.addEventListener("mouseout",e=>{const t=e.target.closest(".accent-card");t&&(e.relatedTarget&&t.contains(e.relatedTarget)||(t.style.transform=""))}),document.addEventListener("focusin",e=>{const t=e.target.closest(".accent-card");t&&(t.style.transform="translateX(6px) translateY(-2px) scale(1.01) translateZ(0)")}),document.addEventListener("focusout",e=>{const t=e.target.closest(".accent-card");t&&(t.style.transform="")}),document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll(".accent-card").forEach(e=>{e.hasAttribute("tabindex")||e.setAttribute("tabindex","0")}),document.querySelectorAll("abbr[data-tooltip], abbr[title]").forEach(e=>{if(e.hasAttribute("title")){const t=e.getAttribute("title");e.setAttribute("data-tooltip",t),e.removeAttribute("title")}e.setAttribute("tabindex","0"),e.setAttribute("aria-label",e.getAttribute("data-tooltip"))})});let activeTooltip=null,tooltipRAF=null;document.addEventListener("pointermove",e=>{const t=e.target.closest("abbr[data-tooltip]");if(!t)return activeTooltip&&(activeTooltip.style.setProperty("--tooltip-parallax","0px"),activeTooltip.style.setProperty("--tooltip-glow-x","50%"),activeTooltip.style.setProperty("--tooltip-glow-y","50%"),activeTooltip.style.setProperty("--tooltip-shift-x","0px"),activeTooltip=null),void(tooltipRAF=null);activeTooltip=t,tooltipRAF||(tooltipRAF=requestAnimationFrame(()=>{const a=t.getBoundingClientRect(),o=(t.closest(".deep-dive-body")||document.body).getBoundingClientRect(),i=(e.clientX-a.left-a.width/2)/10;t.style.setProperty("--tooltip-parallax",`${i}px`);let n=(e.clientX-a.left)/a.width*100,r=(e.clientY-a.top)/a.height*100;n=Math.max(0,Math.min(100,n)),r=Math.max(0,Math.min(100,r)),t.style.setProperty("--tooltip-glow-x",`${n}%`),t.style.setProperty("--tooltip-glow-y",`${r}%`);let s=0;const l=9*(t.getAttribute("data-tooltip")||"").length+50,c=a.right+l/2-o.right,d=o.left-(a.left-l/2);c>0&&(s-=c),d>0&&(s+=d),t.style.setProperty("--tooltip-shift-x",`${s}px`),a.top<120?t.classList.add("tooltip-flip"):t.classList.remove("tooltip-flip"),tooltipRAF=null}))});const intelFeed=document.getElementById("intelFeed");if(intelFeed){const e=["Tactical data actively monitored to reflect current European systems.","Pressing structures updated using latest Champions League match analysis.","Positional play models derived from elite academy methodologies.","Player role definitions calibrated against modern tactical frameworks.","Live scouting insights integrated from top European competitions."];let t=0;setInterval(()=>{t=(t+1)%e.length,intelFeed.classList.add("intel-fade"),setTimeout(()=>{intelFeed.textContent=e[t],intelFeed.classList.remove("intel-fade")},250)},5e3)}const brandWrapper=document.querySelector(".brand-header-wrapper");if(brandWrapper){const e=8,t=768,a=t=>{const a=brandWrapper.getBoundingClientRect(),o=t.clientX-a.left,i=t.clientY-a.top,n=a.width/2,r=a.height/2,s=(i-r)/r*e,l=(o-n)/n*e;brandWrapper.style.transform=`rotateX(${-s}deg) rotateY(${l}deg)`},o=()=>{brandWrapper.style.transform="rotateX(0deg) rotateY(0deg)"},i=e=>{window.innerWidth>=t&&a(e)},n=()=>{o()};brandWrapper.addEventListener("pointermove",i),brandWrapper.addEventListener("pointerleave",n),window.addEventListener("resize",o)}let ambientHum=null,activeFadeInterval=null,continuousConfettiInterval=null,humTimeout=null;const CEREMONY_DURATION=3500;let ceremonyUnlockTimeout=null,graduationActive=!1,graduationAudio=null;function closeLockModal(){const e=document.getElementById("lock-modal-overlay");if(!e)return;if(humTimeout&&(clearTimeout(humTimeout),humTimeout=null),ambientHum){const e=20,t=500/e;let a=0;const o=ambientHum.volume;activeFadeInterval&&(clearInterval(activeFadeInterval),activeFadeInterval=null),activeFadeInterval=setInterval(()=>{if(!ambientHum)return clearInterval(activeFadeInterval),void(activeFadeInterval=null);if(a++,ambientHum.volume=Math.max(0,o*(1-a/e)),a>=e){clearInterval(activeFadeInterval),activeFadeInterval=null;try{ambientHum.pause(),ambientHum.currentTime=0}catch{}ambientHum=null}},t)}e.classList.remove("active");const t=a=>{a.target===e&&(e.classList.remove("visible"),e.removeEventListener("transitionend",t))};e.addEventListener("transitionend",t)}async function showLockModal(e){const t=document.getElementById("lock-modal-overlay");if(!t)return;if(humTimeout&&(clearTimeout(humTimeout),humTimeout=null),activeFadeInterval&&(clearInterval(activeFadeInterval),activeFadeInterval=null),ambientHum)try{const e=getAudioContext();if(ambientHum._gainNode&&e){const t=e.currentTime;ambientHum._gainNode.gain.cancelScheduledValues(t),ambientHum._gainNode.gain.setValueAtTime(ambientHum._gainNode.gain.value||.05,t),ambientHum._gainNode.gain.linearRampToValueAtTime(0,t+.2)}setTimeout(()=>{try{ambientHum._audioSource&&ambientHum._audioSource.disconnect()}catch{}try{ambientHum._gainNode&&ambientHum._gainNode.disconnect()}catch{}try{ambientHum.pause(),ambientHum.currentTime=0}catch{}ambientHum=null},300)}catch{ambientHum=null}const a=document.getElementById("lock-modal-title"),o=document.getElementById("lock-modal-body"),i=document.getElementById("lock-modal-btn");i&&(i.onclick=null,"academic"===e?(a&&(a.textContent="Qualify for Pro"),o&&(o.textContent="Pass Module 1 Final (14/15) to unlock"),i.textContent="Return to Hub",i.onclick=()=>{"function"==typeof closeLockModal&&closeLockModal()}):(a&&(a.textContent="Unlock Elite Tactics"),o&&(o.textContent="Advanced scouting reports available"),i.textContent="Upgrade to Academy Pro",i.onclick=()=>{void 0!==academyProgress&&(academyProgress.isPremiumUser=!0,"function"==typeof saveProgressToStorage&&saveProgressToStorage(academyProgress)),"function"==typeof playAcademySound&&playAcademySound("correct",{volume:.8,duration:2500}),"function"==typeof updateHubUI&&updateHubUI(),"function"==typeof closeLockModal&&closeLockModal()}),t.classList.add("visible"),requestAnimationFrame(()=>t.classList.add("active")),"function"==typeof playAcademySound&&playAcademySound("whistle",{volume:.6}),humTimeout=setTimeout(()=>{"function"==typeof playAcademySound&&(ambientHum=playAcademySound("correct",{volume:.05,loop:!0}))},1e3))}function launchConfetti(e="graduation-overlay"){const t=document.getElementById(e);if(!t)return;const a=["gold","red","blue","green","white","purple"],o=document.createDocumentFragment();for(let e=0;e<100;e++){const e=document.createElement("div");e.className=`ikb-confetti ${a[Math.floor(Math.random()*a.length)]}`,e.style.left=100*Math.random()+"%";const t=16*Math.random()+12;e.style.width=`${t}px`,e.style.height=`${t}px`;const i=2*Math.random()+1.5,n=Math.random();e.style.animationDuration=`${i}s`,e.style.animationDelay=`${n}s`,o.appendChild(e),setTimeout(()=>{e&&e.parentNode&&e.remove()},1e3*(i+n))}t.appendChild(o)}const TimelineEngine={activeTimers:[],clear(){this.activeTimers.forEach(e=>clearTimeout(e)),this.activeTimers=[]},wait(e,t){const a=setTimeout(t,e);return this.activeTimers.push(a),a}};function dismissGraduation(){if(!graduationActive)return;if(graduationActive=!1,ceremonyUnlockTimeout&&(clearTimeout(ceremonyUnlockTimeout),ceremonyUnlockTimeout=null),graduationAudio){try{graduationAudio.pause()}catch{}try{graduationAudio.currentTime=0}catch{}if(void 0!==activeClones&&Array.isArray(activeClones)){const e=activeClones.indexOf(graduationAudio);e>-1&&activeClones.splice(e,1)}graduationAudio=null}void 0!==continuousConfettiInterval&&continuousConfettiInterval&&(clearInterval(continuousConfettiInterval),continuousConfettiInterval=null);const e=document.getElementById("graduation-overlay");e&&(e.querySelectorAll(".ikb-confetti").forEach(e=>e.remove()),e.classList.remove("active"),e.classList.add("hidden")),document.body.classList.remove("modal-open")}function showGraduationCeremony(e=4){if(graduationActive)return;const t=document.getElementById("graduation-overlay");if(!t)return void console.error("[Graduation Overlay] #graduation-overlay not found");graduationActive=!0,"function"==typeof stopAllAudio&&stopAllAudio(),void 0!==FXTimeline&&FXTimeline&&"function"==typeof FXTimeline.clear&&FXTimeline.clear(),t.classList.remove("theme-foundation","theme-pro","theme-tactician","theme-mogul"),1===e?t.classList.add("theme-foundation"):2===e?t.classList.add("theme-pro"):3===e?t.classList.add("theme-tactician"):t.classList.add("theme-mogul");const a=document.getElementById("graduation-subtitle");a&&(a.textContent=1===e?"FOUNDATION MASTERED.":2===e?"PRO LEAGUES MASTERED.":3===e?"ELITE TACTICS VERIFIED.":"BOARDROOM CONQUERED.");const o=document.getElementById("claim-badge-final");o&&(o.classList.remove("reveal-cta"),o.classList.add("hidden-cta")),t.classList.remove("hidden"),t.classList.add("active"),document.body.classList.add("modal-open"),console.log("[GRAD] Overlay launched"),graduationAudio=playAcademySound("correct",{volume:.8,duration:CEREMONY_DURATION}),console.log("[GRAD] playAcademySound returned:",graduationAudio);ceremonyUnlockTimeout=setTimeout(()=>{graduationActive&&o&&(o.classList.remove("hidden-cta"),o.classList.add("reveal-cta"))},CEREMONY_DURATION);const i=document.getElementById("skip-graduation-btn");i&&(i.onclick=dismissGraduation),o&&(o.onclick=()=>{4===e&&void 0!==academyProgress&&(academyProgress.isGraduated=!0,"function"==typeof saveProgressToStorage&&saveProgressToStorage(academyProgress),"function"==typeof applyMogulUIState&&applyMogulUIState()),dismissGraduation();const t=`topic-module-${e}-exam-lobby`;document.getElementById(t)?showScreen(t):console.warn(`[Graduation Overlay] Lobby not found: ${t}`)}),t.onclick=e=>{e.target===t&&dismissGraduation()},"function"==typeof launchConfetti&&launchConfetti()}function showFinalAcademyGraduation(){console.log("[FINAL GRADUATION] Triggered"),"function"==typeof stopAllAudio&&stopAllAudio(),void 0!==FXTimeline&&FXTimeline&&"function"==typeof FXTimeline.clear&&FXTimeline.clear();const e=document.getElementById("final-graduation-overlay");if(!e)return void console.error("[FINAL GRADUATION] Overlay missing");e.classList.remove("hidden"),e.classList.toggle("active",!0),document.body.classList.add("modal-open"),"function"==typeof playAcademySound&&(playAcademySound("vogGraduated",{volume:1}),playAcademySound("correct",{volume:.4})),void 0!==continuousConfettiInterval&&continuousConfettiInterval&&clearInterval(continuousConfettiInterval),launchConfetti("final-graduation-overlay"),continuousConfettiInterval=setInterval(()=>{launchConfetti("final-graduation-overlay")},2e3);const t=document.getElementById("enter-boardroom-btn");t&&(t.onclick=()=>{closeFinalAcademyGraduation(),document.getElementById("boardroom-screen")&&showScreen("boardroom-screen")})}function closeFinalAcademyGraduation(){const e=document.getElementById("final-graduation-overlay");e&&(e.querySelectorAll(".ikb-confetti").forEach(e=>e.remove()),e.classList.remove("active"),e.classList.add("hidden")),void 0!==continuousConfettiInterval&&continuousConfettiInterval&&(clearInterval(continuousConfettiInterval),continuousConfettiInterval=null),document.body.classList.remove("modal-open"),"function"==typeof stopAllAudio&&stopAllAudio()}function applyMogulUIState(){void 0!==academyProgress&&academyProgress.isGraduated?document.body.classList.contains("body-mogul-active")||(document.body.classList.add("body-mogul-active"),console.log("💎 MOGUL GLOW ACTIVATED")):document.body.classList.remove("body-mogul-active")}const EventDirector={currentEvent:null,play(e,t={}){switch(this.stop(),this.currentEvent=e,e){case"graduation":this.runGraduation(t);break;case"goal":this.runGoal(t);break;case"unlock":this.runUnlock(t);break;default:console.warn("Unknown event:",e)}},stop(){if(void 0!==TimelineEngine&&TimelineEngine.clear(),"function"==typeof stopAllAudio&&stopAllAudio(),void 0!==ambientHum&&ambientHum){try{ambientHum.pause(),ambientHum.currentTime=0}catch{}ambientHum=null}void 0!==continuousConfettiInterval&&continuousConfettiInterval&&(clearInterval(continuousConfettiInterval),continuousConfettiInterval=null),document.body.classList.contains("modal-open")&&document.body.classList.remove("modal-open"),this.currentEvent=null},runGraduation(){showFinalAcademyGraduation()},runGoal(){"function"==typeof playAcademySound&&playAcademySound("correct",{volume:1})},runUnlock(){"function"==typeof playAcademySound&&playAcademySound("whistle",{volume:.5})}};document.addEventListener("animationend",e=>{e.target&&e.target.classList.contains("exam-ready-burst")&&e.target.classList.remove("exam-ready-burst")}),document.addEventListener("DOMContentLoaded",()=>{console.log("⚡ ACADEMY SYSTEM ONLINE");const e=loadProgressFromStorage();e&&(academyProgress=e),updateHubUI(),applyMogulUIState()}),window.ultimateGodMode=function(){academyProgress.isPremiumUser=!0,academyProgress.isGraduated=!0,academyProgress.module1Score=15,academyProgress.module2Score=15,academyProgress.module3Score=15,academyProgress.module4Score=15,academyProgress.completedLessons=["1-1","1-2","1-3","1-4","1-5","1-6","2-1","2-2","2-3","2-4","2-5","2-6","3-1","3-2","3-3","3-4","3-5","4-1","4-2","4-3","4-4","4-5"],academyProgress.unlockedModules=[1,2,3,4],"function"==typeof saveProgressToStorage&&saveProgressToStorage(academyProgress),"function"==typeof updateHubUI&&updateHubUI(),"function"==typeof updateTopicLocks&&updateTopicLocks(),"function"==typeof applyMogulUIState&&applyMogulUIState(),console.log("⚡ ULTIMATE GOD MODE ACTIVATED: All modules, exams, and lessons unlocked."),alert("⚡ God Mode Activated! All lessons and modules are now unlocked.")};let godModeTaps=0;document.addEventListener("DOMContentLoaded",()=>{const e=document.querySelector(".brand-crest");e&&e.addEventListener("click",()=>{godModeTaps++,5===godModeTaps&&(ultimateGodMode(),godModeTaps=0),setTimeout(()=>{godModeTaps=0},2e3)})});
+/* ============================================================
+ * © 2026 I Know Ball. All Rights Reserved.
+ * THE ELITE TACTICAL ACADEMY™
+ * Unauthorized copying, modification, or distribution of this file is strictly prohibited.
+ * ============================================================ */
+
+/* --- ENGINE TIMING CONFIGURATION --- */
+const REVEAL_DELAY = 2000;
+const SUDDEN_DEATH_DELAY = 4000;
+
+/* ==========================================
+   SAFARI / MOBILE AUDIO RESUME FIX (HARDENED)
+   ========================================== */
+function createAudioContext() {
+    try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        return new Ctx();
+    } catch {
+        return null;
+    }
+}
+
+function getAudioContext() {
+    if (!window.__audioCtx || window.__audioCtx.state === 'closed') {
+        window.__audioCtx = createAudioContext();
+
+        // Force re-init hook if your engine depends on it
+        if (typeof initAudioEngine === 'function') {
+            audioInitialized = false; 
+            initAudioEngine();
+        }
+    }
+    return window.__audioCtx;
+}
+
+
+function primeAudio() {
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+    } catch {}
+}
+
+/* ==========================================
+   PERSISTENT iOS AUDIO ENGINE
+   ========================================== */
+
+let audioUnlocked = false;
+
+/* ==========================================
+   SAFE AUDIO CONTEXT RESUMER (DIAGNOSTIC VERSION)
+   ========================================== */
+async function resumeAudioContext() {
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+            await ctx.resume();
+
+            // 🔥 AUDITOR DIAGNOSTIC: Check what happens after resume
+            console.log("[WAKE CHECK]", ctx.state, ctx.currentTime);
+
+            try {
+                const gain = ctx.createGain();
+                gain.gain.value = 0;
+                const osc = ctx.createOscillator();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.05);
+                osc.onended = () => {
+                    try { osc.disconnect(); } catch {}
+                    try { gain.disconnect(); } catch {}
+                };
+            } catch (e) {
+                console.warn('Wake oscillator failed', e);
+            }
+        }
+    } catch (err) {
+        console.warn('AudioContext resume failed:', err);
+    }
+}
+
+
+/* ==========================================
+   PERSISTENT AUDIO UNLOCKER
+   ========================================== */
+function unlockAudio() {
+    /* --------------------------------------
+       1. ALWAYS DEFIBRILLATE
+       -------------------------------------- */
+    resumeAudioContext();
+
+    /* --------------------------------------
+       2. ONE-TIME AUDIO PRIMER
+       -------------------------------------- */
+    if (!audioUnlocked) {
+        try {
+            primeAudio();
+            audioUnlocked = true;
+        } catch (err) {
+            console.warn(
+                'Audio priming failed:',
+                err
+            );
+        }
+    }
+}
+
+/* ==========================================
+   PAGE VISIBILITY RECOVERY (HARDENED DEFIBRILLATOR)
+   (Critical for iOS sleep/wake)
+   ========================================== */
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        const ctx = getAudioContext();
+
+        if (!ctx) return;
+
+        ctx.resume()
+            .then(() => {
+                try {
+                    const gain = ctx.createGain();
+                    gain.gain.value = 0;
+
+                    const osc = ctx.createOscillator();
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+
+                    // 🔥 The Auditor's Tweak: Use ctx.currentTime
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.05);
+
+                    // 🔥 Explicit Garbage Collection (Prevents memory leaks on iOS)
+                    osc.onended = () => {
+                        try { osc.disconnect(); } catch {}
+                        try { gain.disconnect(); } catch {}
+                    };
+                } catch (err) {
+                    console.warn('Wake oscillator failed', err);
+                }
+            })
+            .catch(err => {
+                console.warn('Resume failed', err);
+            });
+    }
+});
+
+/* ==========================================
+   iOS PAGE RESTORE EVENTS
+   ========================================== */
+
+window.addEventListener(
+    'pageshow',
+    () => {
+        resumeAudioContext();
+    }
+);
+
+window.addEventListener(
+    'focus',
+    () => {
+        resumeAudioContext();
+    }
+);
+
+/* ==========================================
+   PERSISTENT USER INTERACTION DEFIBRILLATOR
+   ========================================== */
+
+[
+    'touchstart',
+    'touchend',
+    'click'
+].forEach(eventType => {
+    document.addEventListener(
+        eventType,
+        unlockAudio,
+        {
+            passive: true
+        }
+    );
+});
+
+/* ============================================================
+   1. STATE MANAGEMENT & LOCAL STORAGE (V1 ARCHITECTURE)
+   ============================================================ */
+
+function getDefaultAcademyProgress() {
+    return {
+        module1Score: 0,
+        module2Score: 0,
+        module3Score: 0,
+        module4Score: 0,
+        isGraduated: false, 
+        isPremiumUser: false, // Business State
+        completedLessons: [],
+        unlockedModules: [], // 🔥 NEW: Persistent unlock tracker
+        longestStreak: 0
+    };
+}
+
+/* ==========================================
+   SURGICAL AUDIO SUPPRESSION
+   ========================================== */
+let suppressCompletionAudio = false;
+
+let academyProgress = getDefaultAcademyProgress();
+const STORAGE_KEY = "ikb_save_v1";
+
+function isStorageAvailable() {
+    try {
+        const testKey = "__storage_test__";
+        localStorage.setItem(testKey, testKey);
+        localStorage.removeItem(testKey);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+// HARDENED LOAD: Merges default schema safely with old saves
+function loadProgressFromStorage() {
+    if (!isStorageAvailable()) return null;
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+            const parsedData = JSON.parse(raw);
+            return { ...getDefaultAcademyProgress(), ...parsedData };
+        }
+        return null;
+    } catch (e) {
+        console.warn("Storage read failed:", e);
+        return null;
+    }
+}
+
+function saveProgressToStorage(state) {
+    if (!isStorageAvailable()) return;
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn("Storage write failed:", e);
+    }
+}
+
+// --- NEW: CUSTOM RESET MODAL (Fully class-based) ---
+function resetAcademyProgress() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'lock-modal-card danger-mode';
+
+    wrapper.innerHTML = `
+        <div class="modal-icon">⚠️</div>
+        <h2 class="modal-title">TERMINATE CONTRACT</h2>
+        <p class="modal-text">
+            This action will wipe the database and reset your entire Academy progress. This cannot be undone. Are you sure?
+        </p>
+        <div class="modal-buttons">
+            <button class="modal-button cancel-btn" id="cancel-reset-btn">CANCEL</button>
+            <button class="modal-button confirm-btn" id="confirm-reset-btn">CONFIRM RESET</button>
+        </div>
+    `;
+
+    openModal(wrapper, "Reset Academy Confirmation");
+
+    // Attach functionality in JS, completely separate from HTML styling
+    document.getElementById('cancel-reset-btn').addEventListener('click', closeModal);
+    document.getElementById('confirm-reset-btn').addEventListener('click', confirmResetAcademy);
+}
+
+function confirmResetAcademy() {
+    academyProgress = getDefaultAcademyProgress();
+    try {
+        if (isStorageAvailable()) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(academyProgress));
+            localStorage.removeItem(STORAGE_KEY);
+        }
+    } catch (e) {
+        console.warn("Storage reset failed:", e);
+    }
+    window.location.replace(window.location.pathname);
+}
+
+/* ============================================================
+   2. AAA STADIUM AUDIO ENGINE (Reverb, Ducking, Panning)
+   ============================================================ */
+
+const sounds = {
+    whistle: new Audio('audio/football_referee-394016.mp3'),
+    booking: new Audio('audio/little-girl-says-yellow-184028.mp3'),
+    ejected: new Audio('audio/red-7991.mp3'),
+    correct: new Audio('audio/crowd-cheering-in-stadium-435357.mp3'), 
+    wrong: new Audio('audio/boo-6377.mp3'),
+    
+    // Voice of God (VOG) Audio Overlays (.m4a format)
+    vogWarning: new Audio('audio/vog-warning.m4a'),
+    vogYellow: new Audio('audio/vog-yellow.m4a'),
+    vogSecondYellow: new Audio('audio/vog-second-yellow.m4a'),
+    vogRed: new Audio('audio/vog-red.m4a'),
+    vogVar: new Audio('audio/vog-var.m4a'),
+    vogOffside: new Audio('audio/vog-offside.m4a'),
+    vogGraduated: new Audio('audio/vog-graduated.m4a')
+};
+
+// --- PRELOAD OPTIMIZATION ---
+Object.values(sounds).forEach(sound => {
+    sound.preload = "auto";
+});
+
+// --- AUDIO CONTEXT & REVERB (LAZY INITIALIZATION) ---
+let audioCtx, stadiumDelay, stadiumFeedback, stadiumWide, stadiumReturn;
+let audioInitialized = false;
+
+
+
+/* ============================================================
+   AUDIO BUFFER LOADER (SAFE + AWAITABLE + iOS POLYFILL)
+   ============================================================ */
+const audioBuffers = {};
+let audioBuffersReady = false;
+let preloadPromise = null;
+
+
+async function loadAudioBuffer(name, url) {
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        if (ctx.state === "suspended") {
+            try { await ctx.resume(); } catch {}
+        }
+
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+
+        const arrayBuffer = await res.arrayBuffer();
+
+        // 🔥 SAFER decode (Handles iOS Safari swallowed promises)
+        const buffer = await new Promise((resolve, reject) => {
+            ctx.decodeAudioData(
+                arrayBuffer,
+                decoded => resolve(decoded),
+                err => reject(err)
+            );
+        });
+
+        audioBuffers[name] = buffer;
+    } catch (err) {
+        console.warn("❌ Audio decode failed:", name, err);
+    }
+}
+
+/* ==========================================
+   MASTER AUDIO BUFFER LIBRARY
+   ========================================== */
+const bufferUrls = {
+    whistle: 'audio/football_referee-394016.mp3',
+    booking: 'audio/little-girl-says-yellow-184028.mp3',
+    ejected: 'audio/red-7991.mp3',
+    correct: 'audio/crowd-cheering-in-stadium-435357.mp3',
+    wrong: 'audio/boo-6377.mp3',
+
+    vogWarning: 'audio/vog-warning.m4a',
+    vogYellow: 'audio/vog-yellow.m4a',
+    vogSecondYellow: 'audio/vog-second-yellow.m4a',
+    vogRed: 'audio/vog-red.m4a',
+    vogVar: 'audio/vog-var.m4a',
+    vogOffside: 'audio/vog-offside.m4a',
+    vogGraduated: 'audio/vog-graduated.m4a'
+};
+
+async function preloadAudioBuffers() {
+    if (preloadPromise) return preloadPromise;
+
+    preloadPromise = Promise.all(
+        Object.entries(bufferUrls).map(([name, url]) => loadAudioBuffer(name, url))
+    ).then(() => {
+        audioBuffersReady = true;
+    });
+
+    return preloadPromise;
+}
+
+/* ============================================================
+   AUDIO PRE-WARMER (HYBRID HARDWARE WAKE-UP)
+   ============================================================ */
+let audioReadyPromise = null;
+
+function safePreWarm() {
+    if (!audioReadyPromise) {
+        audioReadyPromise = (async () => {
+            try {
+                await preWarmAudioEngine();
+            } catch (err) {
+                console.warn("Audio prewarm failed:", err);
+                audioReadyPromise = null;
+            }
+        })();
+    }
+}
+
+// ✅ Reliable, modern gesture events
+document.addEventListener('pointerdown', safePreWarm, { once: true });
+document.addEventListener('keydown', safePreWarm, { once: true });
+
+async function preWarmAudioEngine() {
+    if (audioInitialized) return;
+
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    if (ctx.state === "suspended") {
+        try { await ctx.resume(); } catch {}
+    }
+
+    // 🔥 HYBRID iOS UNLOCK (Zero-Pop Oscillator)
+    try {
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+
+        const osc = ctx.createOscillator();
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.03);
+
+        osc.onended = () => {
+            try { osc.disconnect(); } catch {}
+            try { gain.disconnect(); } catch {}
+        };
+    } catch (e) {
+        console.warn("Silent unlock failed:", e);
+    }
+
+
+    // ✅ WAIT for buffers to load (deduplicated)
+    await preloadAudioBuffers();
+
+    // 🔥 PRIME THE WHISTLE (Kills first-play latency)
+    if (audioBuffers.whistle) {
+        try {
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffers.whistle;
+
+            const gain = ctx.createGain();
+            gain.gain.value = 0;
+
+            source.connect(gain);
+            gain.connect(ctx.destination);
+
+            source.start(0);
+            source.stop(ctx.currentTime + 0.01);
+
+            source.onended = () => {
+                try { source.disconnect(); } catch {}
+                try { gain.disconnect(); } catch {}
+            };
+        } catch (e) {
+            console.warn("Whistle prime failed:", e);
+        }
+    }
+
+    if (typeof initAudioEngine === "function") {
+        initAudioEngine();
+    }
+
+    audioInitialized = true;
+}
+
+// ✅ Reliable, modern gesture events (Ultra-lean, dropping legacy iOS 12 overhead)
+document.addEventListener('pointerdown', safePreWarm, { once: true });
+document.addEventListener('keydown', safePreWarm, { once: true });
+
+/* ============================================================
+   FX QUEUE ENGINE (Prevents Overlap + Race Conditions)
+   ============================================================ */
+const FXController = {
+    activeOverlay: null,
+    activeSounds: new Set(),
+    activeTimelineSounds: [],
+
+    // 🔥 Register sounds triggered by timeline
+    registerSound(clone) {
+        if (!clone) return;
+        this.activeTimelineSounds.push(clone);
+    },
+
+    // 🔥 Kill ONLY timeline audio (Fade-aware + Safe Cleanup)
+    stopAllTimelineAudio() {
+        this.activeTimelineSounds.forEach(clone => {
+            // 🔥 SAFEGUARD: Skip fading audio
+            if (!clone || clone._isFading) return;
+
+            try { clone.pause(); } catch {}
+            try { clone.currentTime = 0; } catch {}
+
+            // 🔥 Clean up Web Audio nodes if they exist
+            if (clone._audioSource) {
+                try { clone._audioSource.disconnect(); } catch {}
+            }
+
+            if (clone._gainNode) {
+                try { clone._gainNode.disconnect(); } catch {}
+            }
+        });
+
+        // 🔥 Keep ONLY fading clones so they can finish naturally
+        this.activeTimelineSounds = this.activeTimelineSounds.filter(
+            clone => clone && clone._isFading
+        );
+    },
+
+    // 🔥 Overlay cleanup (safe + fallback)
+    clearOverlay() {
+        if (this.activeOverlay) {
+            this.activeOverlay.classList.remove('active');
+            this.activeOverlay = null;
+        }
+
+        const overlays = document.querySelectorAll('#var-overlay, #offside-overlay');
+        overlays.forEach(el => {
+            el.classList.remove('active', 'visible', 'var-approved');
+        });
+    },
+
+    setOverlay(el) {
+        this.clearOverlay();
+        this.activeOverlay = el;
+        if (el) el.classList.add('active');
+    },
+
+    playSoundSafe(name, options = {}) {
+        if (typeof playAcademySound !== 'function') return;
+
+        if (options.exclusive) {
+            if (typeof stopAllAudio === "function") {
+                stopAllAudio();
+            }
+            this.activeSounds.clear();
+        }
+
+        playAcademySound(name, options);
+        this.activeSounds.add(name);
+
+        setTimeout(() => {
+            this.activeSounds.delete(name);
+        }, options.duration || 2000);
+    }
+};
+
+/* ============================================================
+   LAYERED AUDIO ENGINE (STADIUM DEPTH)
+   ============================================================ */
+function playStadiumFX(type) {
+    if (typeof playAcademySound !== 'function') return;
+
+    switch (type) {
+        case "var-start":
+            // 🔥 REMOVED duration and exclusive flags
+            FXController.playSoundSafe('whistle', {
+                volume: 0.6
+            });
+            break;
+        case "var-build":
+            FXController.playSoundSafe('vogVar', {
+                stadium: true,
+                volume: 0.7
+            });
+            break;
+        case "var-success":
+            FXController.playSoundSafe('correct', {
+                overlap: true,
+                volume: 0.45
+            });
+            break;
+    }
+}
+
+/* ============================================================
+   INPUT BUFFER ENGINE (ANTI RAGE-CLICK SYSTEM)
+   ============================================================ */
+const InputGuard = {
+    locked: false,
+    bufferTime: 500,
+    _lockId: 0,
+
+    canInteract() {
+        return !this.locked;
+    },
+
+    lock(duration = this.bufferTime) {
+        this.locked = true;
+        const currentLock = ++this._lockId;
+
+        setTimeout(() => {
+            if (this._lockId === currentLock) {
+                this.locked = false;
+            }
+        }, duration);
+    },
+
+    unlock() {
+        this._lockId++;
+        this.locked = false;
+    }
+};
+
+/* ============================================================
+   SPATIAL AUDIO MATH (UI-BASED PANNING)
+   ============================================================ */
+function getSpatialPan(element) {
+    if (!(element instanceof HTMLElement)) return 0;
+
+    const rect = element.getBoundingClientRect();
+
+    // 🔥 Prevent divide-by-zero edge case
+    const screenCenter = window.innerWidth / 2 || 1;
+    const elementCenter = rect.left + rect.width / 2;
+
+    let pan = (elementCenter - screenCenter) / screenCenter;
+
+    // Clamp safely
+    return Math.max(-1, Math.min(1, pan));
+}
+
+/* ============================================================
+   GLOBAL FX TIMELINE (CINEMATIC SEQUENCER)
+   ============================================================ */
+const FXTimeline = {
+    running: false,
+    currentSequenceId: 0,
+
+    async play(sequence = []) {
+        const seqId = ++this.currentSequenceId;
+        this.running = true;
+
+        if (typeof FXController !== 'undefined') {
+            FXController.clearOverlay();
+            FXController.stopAllTimelineAudio();
+        }
+
+        for (const step of sequence) {
+            if (!this.running || this.currentSequenceId !== seqId) break;
+
+            try {
+                switch (step.type) {
+                    case "delay":
+                        await new Promise(res => setTimeout(res, step.duration));
+                        break;
+
+                    case "sound":
+                        if (typeof playAcademySound !== 'function') {
+                            break;
+                        }
+
+                        /* ==========================================
+                           NON-BLOCKING SOUND
+                           ========================================== */
+                        if (step.blocking === false) {
+                            playAcademySound(
+                                step.name,
+                                step.options || {}
+                            );
+                            break;
+                        }
+
+                        /* ==========================================
+                           BLOCKING / CINEMATIC SOUND
+                           ========================================== */
+                        await new Promise(resolve => {
+                            const timeoutDuration = step.options?.duration || 2500;
+                            let resolved = false;
+
+                            const safeResolve = () => {
+                                if (!resolved) {
+                                    resolved = true;
+                                    resolve();
+                                }
+                            };
+
+                            /* Fallback safety timeout */
+                            const fallbackTimer = setTimeout(safeResolve, timeoutDuration);
+
+                            try {
+                                const result = playAcademySound(
+                                    step.name,
+                                    step.options || {}
+                                );
+
+                                /* Promise-aware audio handling */
+                                if (result && typeof result.then === 'function') {
+                                    result
+                                        .then(() => {
+                                            clearTimeout(fallbackTimer);
+                                            safeResolve();
+                                        })
+                                        .catch(() => {
+                                            safeResolve();
+                                        });
+                                }
+                            } catch (err) {
+                                safeResolve();
+                            }
+                        });
+                        break;
+
+                    case "overlay":
+                        if (typeof FXController !== 'undefined') {
+                            FXController.setOverlay(step.element);
+                        }
+                        break;
+
+                    case "callback":
+                        if (typeof step.fn === "function") step.fn();
+                        break;
+                }
+            } catch (e) {
+                console.warn("Timeline step failed:", e);
+            }
+        }
+
+        if (this.currentSequenceId === seqId) {
+            this.running = false;
+        }
+    },
+
+    clear() {
+        this.running = false;
+        this.currentSequenceId++;
+        if (typeof FXController !== 'undefined') {
+            FXController.clearOverlay();
+            FXController.stopAllTimelineAudio();
+        }
+    }
+};
+
+function initAudioEngine() {
+    if (audioInitialized) return;
+    
+    const ctx = getAudioContext();
+    
+    stadiumDelay = ctx.createDelay();
+    stadiumFeedback = ctx.createGain();
+    stadiumWide = ctx.createStereoPanner();
+    stadiumReturn = ctx.createGain();
+
+    stadiumDelay.delayTime.value = 0.08;     // Tightened from 0.18 to fix "Double Voice"
+    stadiumFeedback.gain.value = 0.20;       // Lowered from 0.35 for a cleaner boom
+
+    stadiumWide.pan.value = -0.6;            // First reflection left
+    stadiumReturn.gain.value = 0.45;         // Reverb tail level
+
+    stadiumDelay.connect(stadiumFeedback);
+    stadiumFeedback.connect(stadiumDelay);
+    stadiumDelay.connect(ctx.destination);   // Direct echo
+
+    // Send echo to wide stereo reflections
+    stadiumDelay.connect(stadiumWide);
+    stadiumWide.connect(stadiumReturn);
+    stadiumReturn.connect(ctx.destination);
+    
+    audioInitialized = true;
+}
+
+/* ============================================================
+   DYNAMIC DUCKING MIXER (STACK-SAFE)
+   ============================================================ */
+const stadiumMixer = {
+    master: 1,
+    crowd: 0.8,
+    ducked: 0.25,
+};
+
+// 🔥 THE CRASH FIX: Changed from const to let so the fader can filter it safely
+let activeClones = [];
+let duckingCount = 0;
+
+function duckCrowdAudio(active = true) {
+    duckingCount += active ? 1 : -1;
+    duckingCount = Math.max(0, duckingCount);
+
+    const ctx = getAudioContext();
+    const level = duckingCount > 0 ? stadiumMixer.ducked : stadiumMixer.crowd;
+
+    activeClones.forEach(clone => {
+        if (clone._gainNode && clone._soundName &&
+            clone._soundName !== 'whistle' &&
+            !clone._soundName.startsWith('vog')) {
+
+            clone._gainNode.gain.setTargetAtTime(
+                level * stadiumMixer.master,
+                ctx.currentTime,
+                0.1
+            );
+        }
+    });
+}
+
+/* ============================================================
+   AUDIO KILL SWITCH (CLEAN)
+   ============================================================ */
+function stopAllAudio() {
+    activeClones.forEach(clone => {
+        if (!clone || clone._isFading) return; // 🔥 SAFEGUARD: Skip fading audio
+
+        try { clone.pause(); } catch {}
+        try { clone.currentTime = 0; } catch {}
+
+        if (clone._audioSource) {
+            try { clone._audioSource.disconnect(); } catch {}
+        }
+
+        if (clone._gainNode) {
+            try { clone._gainNode.disconnect(); } catch {}
+        }
+    });
+
+    // 🔥 Keep only fading clones alive
+    activeClones = activeClones.filter(clone => clone && clone._isFading);
+}
+
+/* ============================================================
+   HARDWARE FADE SYSTEM (UPGRADED FOR CUSTOM DURATIONS)
+   ============================================================ */
+function fadeAndStopCrowd(fadeSeconds = 1.5) {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    // 🔥 SAFETY GUARD: Remove dead clones
+    activeClones = activeClones.filter(clone => clone && clone._gainNode);
+
+    activeClones.forEach((clone) => {
+        const gainNode = clone._gainNode;
+        if (!gainNode) return;
+
+        // 🔥 Mark as protected from kill-switches
+        clone._isFading = true;
+
+        const t = ctx.currentTime;
+
+        try {
+            gainNode.gain.cancelScheduledValues(t);
+
+            // 🔥 Use CURRENT value instead of forcing 1
+            const currentValue = gainNode.gain.value || 1;
+            gainNode.gain.setValueAtTime(currentValue, t);
+
+            gainNode.gain.linearRampToValueAtTime(0, t + fadeSeconds);
+        } catch {}
+
+        setTimeout(() => {
+            try { gainNode.disconnect(); } catch {}
+            try { clone.pause(); } catch {}
+            try { clone.currentTime = 0; } catch {}
+
+            clone._isFading = false;
+
+            const idx = activeClones.indexOf(clone);
+            if (idx > -1) activeClones.splice(idx, 1);
+        }, (fadeSeconds * 1000) + 100);
+    });
+}
+
+/* ============================================================
+   SAMPLE-ACCURATE SOUND PLAYER (SYNCHRONOUS RETURN FIX)
+   ============================================================ */
+function playBufferedSound(name, options = {}) {
+    const bufferClone = {
+        _soundName: name,
+        _isFading: false,
+        pause: () => {}, 
+        currentTime: 0
+    };
+    
+    // Safety check before pushing
+    if (typeof activeClones !== 'undefined' && Array.isArray(activeClones)) {
+        activeClones.push(bufferClone);
+    }
+
+    (async () => {
+        const ctx = getAudioContext();
+        
+        // 🔥 Auditor's Context Failure Guard
+        if (!ctx) {
+            const idx = activeClones.indexOf(bufferClone);
+            if (idx > -1) activeClones.splice(idx, 1);
+            return;
+        }
+
+        if (ctx.state === "suspended") {
+            try { await ctx.resume(); } catch {}
+        }
+
+        await audioReadyPromise;
+
+        const buffer = audioBuffers[name];
+        
+        // 🔥 THE AUDITOR'S MEMORY LEAK FIX
+        if (!buffer) {
+            console.warn("Buffer not found:", name);
+            const idx = activeClones.indexOf(bufferClone);
+            if (idx > -1) activeClones.splice(idx, 1);
+            return;
+        }
+
+        const source = ctx.createBufferSource();
+        const gainNode = ctx.createGain();
+        const panner = ctx.createStereoPanner();
+
+        const volume = options.volume ?? 1;
+        panner.pan.value = options.pan ?? 0;
+        gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+
+        source.buffer = buffer;
+        source.connect(gainNode);
+        gainNode.connect(panner);
+        panner.connect(ctx.destination);
+
+        if (options.stadium && typeof stadiumDelay !== 'undefined') panner.connect(stadiumDelay);
+
+        const isVog = name.startsWith('vog');
+        if (isVog && typeof duckCrowdAudio === 'function') duckCrowdAudio(true);
+
+        bufferClone._audioSource = source;
+        bufferClone._gainNode = gainNode;
+        bufferClone._panner = panner;
+        bufferClone.pause = () => { try { source.stop(); } catch {} };
+
+        let finished = false;
+
+        const cleanup = () => {
+            if (finished) return;
+            finished = true;
+
+            if (isVog && typeof duckCrowdAudio === 'function') {
+                duckCrowdAudio(false);
+            }
+
+            try { source.disconnect(); } catch {}
+            try { gainNode.disconnect(); } catch {}
+            try { panner.disconnect(); } catch {}
+
+            if (
+                typeof activeClones !== 'undefined' &&
+                Array.isArray(activeClones)
+            ) {
+                const idx = activeClones.indexOf(bufferClone);
+
+                if (idx > -1) {
+                    activeClones.splice(idx, 1);
+                }
+            }
+        };
+
+        source.onended = cleanup;
+
+        /* ==========================================
+           START SOURCE FIRST
+           ========================================== */
+        source.start(ctx.currentTime);
+
+        /* ==========================================
+           SAFE DURATION SCHEDULING
+           ========================================== */
+        if (options.duration) {
+            const durationSec = options.duration / 1000;
+
+            try {
+                source.stop(ctx.currentTime + durationSec);
+            } catch (err) {
+                console.warn(
+                    '[Audio] Failed to schedule stop:',
+                    err
+                );
+            }
+        }
+
+        /* ==========================================
+           FALLBACK CLEANUP
+           ========================================== */
+        setTimeout(
+            cleanup,
+            (buffer.duration * 1000) + 250
+        );
+    })();
+
+    return bufferClone;
+}
+
+/* ============================================================
+   CORE PLAYBACK ENGINE (POP-FREE FINAL VERSION)
+   ============================================================ */
+function playAcademySound(soundName, options = {}) {
+    console.log('[AUDIO] Requested:', soundName);
+    
+    // 🔥 ROUTE ALL BUFFERED SOUNDS (Whistle + ALL VOGs)
+    if (typeof audioBuffers !== 'undefined' && audioBuffers[soundName]) {
+        return playBufferedSound(soundName, options); // 🔥 ADDED RETURN
+    }
+
+    const originalSound = sounds[soundName];
+    if (!originalSound) return;
+
+    initAudioEngine();
+
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const volume = options.volume ?? (soundName.startsWith('vog') ? 1 : stadiumMixer.crowd);
+    const isVog = soundName.startsWith('vog');
+    const useStadiumEcho = options.stadium || false;
+
+    let killTimeout = null;
+    let hasEnded = false;
+
+    try {
+        if (ctx.state === "suspended") ctx.resume();
+
+        if (isVog && typeof duckCrowdAudio === 'function') {
+            duckCrowdAudio(true);
+        }
+
+        const clone = originalSound.cloneNode();
+        clone.volume = 1.0;
+
+        if (options.loop === true) clone.loop = true;
+
+        clone._soundName = soundName;
+
+        // ==========================================
+        // 🔗 AUDIO GRAPH
+        // ==========================================
+        const source = ctx.createMediaElementSource(clone);
+        const gainNode = ctx.createGain();
+        const panner = ctx.createStereoPanner();
+
+        panner.pan.value = options.pan ?? 0;
+
+        source.connect(gainNode);
+        gainNode.connect(panner);
+        panner.connect(ctx.destination);
+
+        if (useStadiumEcho && typeof stadiumDelay !== 'undefined') {
+            panner.connect(stadiumDelay);
+        }
+
+        // 🔥 Bind nodes
+        clone._audioSource = source;
+        clone._gainNode = gainNode;
+        clone._panner = panner;
+
+        gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+
+        // 🔥 Register AFTER nodes exist
+        if (typeof FXController !== 'undefined' && typeof FXController.registerSound === 'function') {
+            FXController.registerSound(clone);
+        }
+
+        if (typeof activeClones !== 'undefined') {
+            activeClones.push(clone);
+        }
+
+        // ==========================================
+        // 🔥 CLEAN STOP LOGIC (POP-FREE)
+        // ==========================================
+        if (options.duration) {
+            const durationSec = options.duration / 1000;
+            const fadeOutTime = 0.25;
+            const stopTime = ctx.currentTime + durationSec;
+            const fadeStart = stopTime - fadeOutTime;
+
+            clone._isFading = true;
+
+            const currentValue = gainNode.gain.value || volume;
+            gainNode.gain.setValueAtTime(currentValue, fadeStart);
+            gainNode.gain.linearRampToValueAtTime(0.0001, stopTime);
+
+            killTimeout = setTimeout(() => {
+                if (hasEnded) return;
+                hasEnded = true;
+
+                try { clone.pause(); clone.currentTime = 0; } catch {}
+
+                if (isVog && typeof duckCrowdAudio === 'function') {
+                    duckCrowdAudio(false);
+                }
+
+                const idx = activeClones.indexOf(clone);
+                if (idx > -1) activeClones.splice(idx, 1);
+
+                clone._isFading = false;
+
+                const disconnectDelay = useStadiumEcho ? 3000 : 200;
+                setTimeout(() => {
+                    try { source.disconnect(); } catch {}
+                    try { gainNode.disconnect(); } catch {}
+                    try { panner.disconnect(); } catch {}
+                }, disconnectDelay);
+
+            }, (durationSec * 1000) + 50);
+        }
+
+        clone.onended = () => {
+            if (hasEnded) return;
+            hasEnded = true;
+
+            if (killTimeout) clearTimeout(killTimeout);
+
+            if (isVog && typeof duckCrowdAudio === 'function') {
+                duckCrowdAudio(false);
+            }
+
+            const idx = activeClones.indexOf(clone);
+            if (idx > -1) activeClones.splice(idx, 1);
+
+            clone._isFading = false;
+
+            setTimeout(() => {
+                try { source.disconnect(); } catch {}
+                try { gainNode.disconnect(); } catch {}
+                try { panner.disconnect(); } catch {}
+            }, useStadiumEcho ? 3000 : 200);
+        };
+
+        clone.play().catch(() => {});
+
+        return clone;
+
+    } catch (err) {
+        console.warn("Audio playback failed:", err);
+    }
+}
+
+// ============================================================
+// --- DYNAMIC OFFSIDE WARNING (SAFE TIMELINE VERSION) ---
+// ============================================================
+
+function showOffsideWarning(subtitleText, instructionText) {
+    const overlay = document.getElementById('offside-overlay');
+    const subtitle = document.getElementById('offside-subtitle');
+    const instruction = document.getElementById('offside-instruction');
+
+    if (!overlay) {
+        if (typeof InputGuard !== 'undefined') InputGuard.unlock();
+        return;
+    }
+
+    if (subtitle) subtitle.innerText = subtitleText;
+    if (instruction) instruction.innerText = instructionText;
+
+    // 🔥 SAFE FALLBACK (respects CSS lifecycle)
+    if (typeof FXTimeline === 'undefined' || typeof FXTimeline.play !== 'function') {
+        overlay.classList.add('visible');
+        requestAnimationFrame(() => {
+            overlay.classList.add('active');
+        });
+
+        if (typeof InputGuard !== 'undefined') InputGuard.unlock();
+        return;
+    }
+
+    FXTimeline.play([
+        {
+            type: "callback",
+            fn: () => {
+                overlay.classList.add('visible');
+                requestAnimationFrame(() => {
+                    overlay.classList.add('active');
+                });
+            }
+        },
+
+        {
+            type: "sound",
+            name: "whistle",
+            options: { volume: 0.8 } 
+        },
+
+        // 🔥 TIGHTENED: Whistle ends, immediate 100ms breath, then Voice starts
+        { type: "delay", duration: 100 },
+
+        {
+            type: "sound",
+            name: "vogOffside",
+            options: { stadium: true }
+        },
+
+        // SAFE DELAY (Supported by your FXTimeline engine)
+        { type: "delay", duration: 3000 },
+
+        {
+            type: "callback",
+            fn: () => {
+                overlay.classList.remove('active');
+
+                setTimeout(() => {
+                    overlay.classList.remove('visible');
+
+                    requestAnimationFrame(() => {
+                        if (typeof InputGuard !== 'undefined') {
+                            InputGuard.unlock();
+                        }
+                    });
+                }, 300);
+            }
+        }
+    ]);
+}
+
+/* ============================================================
+   3. NAVIGATION ENGINE (PURE CLASS + RAF ARCHITECTURE)
+   ============================================================ */
+
+function showScreen(screenId) {
+    // =====================================================
+    // 1. GLOBAL SAFETY KILL-SWITCHES
+    // =====================================================
+    if (typeof stopShotClock === 'function') stopShotClock();
+    if (typeof stopAllAudio === 'function') stopAllAudio();
+
+    // 🔥 Safely clear cinematic timeline (prevents audio bleed)
+    if (
+        typeof FXTimeline !== 'undefined' &&
+        FXTimeline &&
+        typeof FXTimeline.clear === 'function'
+    ) {
+        try {
+            FXTimeline.clear();
+        } catch (e) {
+            console.warn('FXTimeline.clear() failed:', e);
+        }
+    }
+
+    // 🔥 HARD FALLBACK: ensure no ghost overlays remain
+    const overlays = document.querySelectorAll(
+        '#var-overlay, #offside-overlay'
+    );
+    overlays.forEach(el => {
+        el.classList.remove('active', 'visible', 'var-approved');
+    });
+
+    // =====================================================
+    // 2. DEACTIVATE ALL SCREENS
+    // =====================================================
+    document.querySelectorAll('.topic-screen').forEach(screen => {
+        screen.classList.remove('active');
+        screen.classList.add('hidden');
+    });
+
+    // =====================================================
+    // 3. ACTIVATE TARGET SCREEN
+    // =====================================================
+    const target = document.getElementById(screenId);
+
+    if (!target) {
+        console.error("CRITICAL NAVIGATION ERROR: Screen ID not found ->", screenId);
+        return;
+    }
+
+    // Remove layout lock first
+    target.classList.remove('hidden');
+
+    // Allow browser to register layout before fade-in
+    requestAnimationFrame(() => {
+        target.classList.add('active');
+        window.scrollTo(0, 0);
+    });
+}
+
+/* ============================================================
+   GATEWAY ROUTER (ACADEMIC FIRST, PREMIUM SECOND - CLEAN)
+   ============================================================ */
+function handleGatewayClick(event, moduleId) {
+    if (typeof academyProgress === 'undefined') return;
+
+    const isGraduated = !!academyProgress.isGraduated;
+    const isPremium = !!academyProgress.isPremiumUser;
+
+    // ==========================================
+    // MODULE ACCESS LOGIC (SOURCE OF TRUTH)
+    // ==========================================
+    if (moduleId === 2) {
+        if (!isGraduated && academyProgress.module1Score < 14) {
+            showOffsideWarning("MODULE LOCKED", "Pass the Foundation Exam to stay onside.");
+            return;
+        }
+    }
+
+    if (moduleId === 3) {
+        if (!isGraduated && academyProgress.module2Score < 14) {
+            showOffsideWarning("MODULE LOCKED", "Pass the Pro Leagues Exam to stay onside.");
+            return;
+        }
+
+        if (!isGraduated && !isPremium) {
+            showLockModal('premium');
+            return;
+        }
+    }
+
+    if (moduleId === 4) {
+        if (!isGraduated && academyProgress.module3Score < 14) {
+            showOffsideWarning("MODULE LOCKED", "Pass the Elite Tactics Exam to stay onside.");
+            return;
+        }
+
+        if (!isGraduated && !isPremium) {
+            showLockModal('premium');
+            return;
+        }
+    }
+
+    // ==========================================
+    // ROUTE
+    // ==========================================
+    const targetScreenId = `topic-module-${moduleId}-hub`;
+    console.log("Routing to:", targetScreenId);
+    showScreen(targetScreenId);
+}
+
+/* --- RANK LEGEND MODAL TOGGLE (Pure Architecture) --- */
+function toggleRankModal() {
+    const modal = document.getElementById('rank-legend-modal');
+    if (!modal) return;
+
+    const isOpen = modal.classList.contains('active');
+
+    if (isOpen) {
+        modal.classList.remove('active');
+        // Wait for 0.3s transition to finish before removing from layout
+        setTimeout(() => modal.classList.remove('visible'), 300);
+    } else {
+        modal.classList.add('visible'); // Puts it in the layout (display: flex)
+        requestAnimationFrame(() => {
+            modal.classList.add('active'); // Triggers the opacity fade
+        });
+    }
+}
+
+/* ============================================================
+   4. MASTER DATA REPOSITORY (LESSON TITLES FOR PROGRESS)
+   ============================================================ */
+
+// Used by the Progress Bar & Universal Viewer
+const module1Data = {
+    1: { title: "Football Pitch Markings" },
+    2: { title: "Teams & Kits" },
+    3: { title: "TV Scoreboard Decoder" },
+    4: { title: "Positions & Roles" },
+    5: { title: "Set Pieces & Elite Rules" },
+    6: { title: "The Offside Rule" }
+};
+
+const module2Data = {
+    1: { title: "What is a League?" },
+    2: { title: "The Big Five" },
+    3: { title: "The Premier League" },
+    4: { title: "English Traditions" }, // <--- NEW LESSON
+    5: { title: "Champions League" },
+    6: { title: "The World Cup" }
+};
+
+const module3Data = {
+    1: { title: "Modern Formations" },
+    2: { title: "The High Press" },
+    3: { title: "Mid-Block & Transition" },
+    4: { title: "Set Play Mastery" },
+    5: { title: "Total Football" }
+};
+
+const module4Data = {
+    1: { title: "The Market" },
+    2: { title: "Takeovers" },
+    3: { title: "FFP & PSR" },
+    4: { title: "Amortisation" },
+    5: { title: "Squad Quotas" }
+};
+
+/* ============================================================
+   5. ELITE DATA INFRASTRUCTURE (Consolidated)
+   ============================================================ */
+
+const modules = {
+  mod1: {
+    title: "Traditional Numbers, Positions & Basic Rules",
+    questions: [
+      // --- TOPIC 1: PITCH MARKINGS ---
+      { id: 1, q: "Purpose of the penalty arc ('D')?", options: ["Keeps players 10 yards from the spot", "Defines the goalkeeper's handling zone", "Indicates where indirect free kicks are taken", "Determines the strict offside boundary"], correct: "Keeps players 10 yards from the spot", explanation: "The penalty arc ensures players remain 10 yards from the penalty mark and outside the penalty area until the ball is kicked." },
+      { id: 2, q: "Where are goal kicks taken from?", options: ["Inside the 6-yard box", "Penalty spot", "Corner arc", "Centre circle"], correct: "Inside the 6-yard box", explanation: "The goal area (6-yard box) is primarily used for goal kicks and for positioning certain free kicks inside the penalty area." },
+      { id: 3, q: "What line separates the two halves of the pitch?", options: ["The Halfway Line", "The Goal Line", "The Touchline", "The 18-Yard Line"], correct: "The Halfway Line", explanation: "The Halfway Line divides the pitch. Crucially, you cannot be offside in your own half." },
+      { id: 4, q: "What area allows the goalkeeper to legally use their hands?", options: ["The Penalty Area", "The 6-Yard Box Only", "The Centre Circle", "The Defensive Half"], correct: "The Penalty Area", explanation: "The goalkeeper is allowed to use their hands anywhere inside their own Penalty Area." },
+      { id: 5, q: "Where does every half and every goal restart from?", options: ["The Centre Spot", "The Goalkeeper's Box", "The Halfway Line", "The Sideline"], correct: "The Centre Spot", explanation: "Play restarts from the Centre Spot at the beginning of each half and after every goal." },
+      { id: 6, q: "What are the boundaries on the side of the pitch called?", options: ["Touchlines", "Goal Lines", "By-lines", "Half-spaces"], correct: "Touchlines", explanation: "The side boundaries are called Touchlines. The ball is out of play when it fully crosses them." },
+      { id: 7, q: "If the ball is resting directly on top of the touchline or goal line, what is its status?", options: ["It is still in play", "It is out of bounds", "Play is paused for a referee drop-ball", "It results in an immediate throw-in"], correct: "It is still in play", explanation: "Every line on the pitch is considered part of the area it defines. A ball on the line is still in play." },
+      { id: 8, q: "What is the boundary called where the ball is out when it fully crosses behind the goal?", options: ["Goal Line", "Touchline", "Halfway Line", "Penalty Line"], correct: "Goal Line", explanation: "The Goal Line runs along the width of the pitch behind the goals." },
+
+      // --- TOPIC 2: TEAMS & KITS ---
+      { id: 9, q: "Which position on the field is traditionally associated with the Number 1 shirt?", options: ["Defence", "Midfield", "Attack", "Goalkeeper"], correct: "Goalkeeper", explanation: "The #1 is traditionally the goalkeeper and is the only player permitted to handle the ball inside their own penalty area." },
+      { id: 10, q: "Which numbers are traditionally defenders?", options: ["2, 3, 4, 5", "6, 8, 10", "7, 9, 11", "1, 2, 3, 4"], correct: "2, 3, 4, 5", explanation: "Numbers 2, 3, 4, and 5 are defenders responsible for protecting the goal and stopping opposition attacks." },
+      { id: 11, q: "Which of the following shirt numbers are traditionally assigned to midfielders?", options: ["6, 8, 10", "2, 3, 4", "7, 9, 11", "1, 5, 6"], correct: "6, 8, 10", explanation: "Numbers 6, 8, and 10 operate in midfield, linking defence and attack while controlling possession." },
+      { id: 12, q: "Which set of shirt numbers is traditionally associated with attacking players?", options: ["7, 9, 11", "6, 8, 10", "2, 3, 4, 5", "1, 2, 3"], correct: "7, 9, 11", explanation: "Numbers 7, 9, and 11 are attacking players focused on creating and scoring goals." },
+      { id: 13, q: "What is the traditional role of Number 5?", options: ["Centre-back", "Full-back", "Striker", "Playmaker"], correct: "Centre-back", explanation: "Number 5 is traditionally a centre-back, positioned centrally in defence to mark strikers and clear danger." },
+      { id: 14, q: "What is the traditional tactical role of a player wearing the Number 9 shirt?", options: ["Striker", "Goalkeeper", "Midfielder", "Full-back"], correct: "Striker", explanation: "Number 9 is the striker, positioned highest up the pitch to score goals." },
+      { id: 15, q: "What is the traditional tactical role of a player wearing the Number 10 shirt?", options: ["Playmaker", "Defender", "Winger", "Goalkeeper"], correct: "Playmaker", explanation: "Number 10 is traditionally the playmaker, operating behind the striker to create goal-scoring chances." },
+      { id: 16, q: "Which numbers are full-backs?", options: ["2 & 3", "4 & 5", "6 & 8", "7 & 11"], correct: "2 & 3", explanation: "Numbers 2 and 3 are traditionally full-backs, positioned on the right and left sides of defence." },
+
+      // --- TOPIC 3: GUESS WHO? (SCOREBOARDS & GIANTS) ---
+      { id: 17, q: "What is the official three-letter scoreboard abbreviation used to represent Manchester United?", options: ["MUN", "MCI", "ARS", "LIV"], correct: "MUN", explanation: "MUN is the official three-letter abbreviation used to represent Manchester United." },
+      { id: 18, q: "What is the official three-letter scoreboard abbreviation used to represent Manchester City?", options: ["MCI", "MUN", "CHE", "TOT"], correct: "MCI", explanation: "MCI is the official three-letter abbreviation used to represent Manchester City." },
+      { id: 19, q: "What is the official three-letter scoreboard abbreviation used to represent Arsenal?", options: ["ARS", "LIV", "CHE", "TOT"], correct: "ARS", explanation: "ARS is the standard abbreviation used to represent Arsenal Football Club." },
+      { id: 20, q: "What is the official three-letter scoreboard abbreviation used to represent Liverpool FC?", options: ["LIV", "ARS", "CHE", "TOT"], correct: "LIV", explanation: "LIV is the scoreboard abbreviation used to represent Liverpool FC." },
+      { id: 21, q: "What is the official three-letter scoreboard abbreviation used to represent Chelsea FC?", options: ["CHE", "LIV", "ARS", "TOT"], correct: "CHE", explanation: "CHE is the common three-letter abbreviation for Chelsea FC." },
+      { id: 22, q: "What is the official three-letter scoreboard abbreviation used to represent Real Madrid?", options: ["RMA", "BAR", "ATM", "PSG"], correct: "RMA", explanation: "RMA is the common abbreviation used for Real Madrid." },
+      { id: 23, q: "What is the official three-letter scoreboard abbreviation used to represent FC Barcelona?", options: ["BAR", "RMA", "ATM", "PSG"], correct: "BAR", explanation: "BAR is the common abbreviation used to represent FC Barcelona." },
+      { id: 24, q: "What is the official three-letter scoreboard abbreviation used to represent Paris Saint-Germain?", options: ["PSG", "RMA", "BAR", "ATM"], correct: "PSG", explanation: "PSG stands for Paris Saint-Germain, the French club based in Paris." },
+      { id: 25, q: "If a television scoreboard reads 'LIV 2-0 MCI', what does this format officially indicate about the match venue?", options: ["Liverpool is home", "Manchester City is home", "It’s a neutral stadium", "Score is unknown"], correct: "Liverpool is home", explanation: "On scoreboards, the home team is always listed first. 'LIV 2-0 MCI' means Liverpool is at home." },
+
+      // --- TOPIC 4: POSITIONS & ROLES ---
+      { id: 26, q: "A 4-4-2 formation includes how many midfielders?", options: ["4", "3", "2", "5"], correct: "4", explanation: "A 4-4-2 formation includes four midfielders positioned across the middle of the pitch." },
+      { id: 27, q: "How many defenders are used in a 5-3-2 formation?", options: ["5", "4", "3", "2"], correct: "5", explanation: "The 5-3-2 formation uses five defenders, making it one of the more defensive tactical setups." },
+      { id: 28, q: "How many forwards in a 4-3-3 formation?", options: ["3", "2", "4", "1"], correct: "3", explanation: "A 4-3-3 formation features three forwards and is widely known as an attacking system." },
+      { id: 29, q: "How many midfielders are in a 4-2-3-1 formation?", options: ["5", "4", "3", "6"], correct: "5", explanation: "A 4-2-3-1 formation contains five midfielders: two deeper and three attacking midfielders." },
+      { id: 30, q: "What is the central forward in a 4-3-3 is called?", options: ["Striker", "Playmaker", "Centre-back", "Winger"], correct: "Striker", explanation: "In a 4-3-3, the central forward is called the striker and leads the attacking line." },
+      { id: 31, q: "Yamal & Olise were used as examples of what type of players?", options: ["Technical, creative wide playmakers", "Powerful box-to-box midfielders", "Centre-backs", "Strikers"], correct: "Technical, creative wide playmakers", explanation: "Yamal & Olise were used as examples of technical, creative wide playmakers in the lesson." },
+      { id: 32, q: "Bellingham & Rice were used as examples of what type of midfielders?", options: ["Powerful box-to-box midfielders", "Creative playmakers", "Wingers", "Strikers"], correct: "Powerful box-to-box midfielders", explanation: "Bellingham & Rice were used as examples of powerful box-to-box midfielders who cover large areas of the pitch." },
+      { id: 33, q: "According to the Academy's breakdown of the 'Transformer' system, what is the primary defensive structural shift performed by wing-backs in a 3-at-the-back formation?", options: ["They drop deep to form a five-man defensive block", "They stay pinned high as traditional wingers", "They permanently invert into the central midfield", "They push up to man-mark the opposing centre-backs"], correct: "They drop deep to form a five-man defensive block", explanation: "In a 3-at-the-back system, wing-backs drop into defensive positions when out of possession, transforming the shape into a solid back five." },
+
+      // --- TOPIC 5: SET PIECES ---
+      { id: 34, q: "What is a free shot from 12 yards called?", options: ["Penalty", "Corner", "Goal kick", "Direct free kick"], correct: "Penalty", explanation: "A penalty is a direct free shot taken from 12 yards with only the goalkeeper defending." },
+      { id: 35, q: "When the defending team last touches the ball over the goal line, what is awarded?", options: ["Corner", "Goal kick", "Throw-in", "Indirect free kick"], correct: "Corner", explanation: "A corner is awarded when the defending team last touches the ball before it crosses their own goal line." },
+      { id: 36, q: "During a free kick outside the box, how can defenders prevent a shot?", options: ["Form a defensive wall at least 10 yards away", "Position a single blocker exactly 5 yards from the ball", "Deploy a player to stand inside the penalty arc", "Charge the kicker the moment the referee blows the whistle"], correct: "Form a defensive wall at least 10 yards away", explanation: "Defenders may stand 10 yards away in a wall to block a direct shot from a free kick outside the penalty area." },
+      { id: 37, q: "What is awarded if a foul occurs inside the penalty area?", options: ["Penalty", "Direct free kick", "Indirect free kick", "Throw-in"], correct: "Penalty", explanation: "A penalty is awarded when a foul is committed by the defending team inside their own penalty area." },
+      { id: 38, q: "How far must a defensive wall stand from the ball during a free kick?", options: ["10 yards", "5 yards", "12 yards", "8 yards"], correct: "10 yards", explanation: "Defensive walls must stand at least 10 yards away from the ball during a free kick." },
+      { id: 39, q: "Can a player score directly from a corner kick?", options: ["Yes, but only against the opponent", "No", "Yes, including own goal", "Only from indirect corner"], correct: "Yes, but only against the opponent", explanation: "A goal can be scored directly from a corner kick, but only into the opponent’s goal. If the ball enters the kicker’s own goal untouched, a corner is awarded to the opponents." },
+      { id: 40, q: "During a throw-in, where must the feet be?", options: ["On or behind the touchline", "At least one foot must be entirely inside the field of play", "Both feet must step entirely over the line onto the pitch", "Foot placement is irrelevant as long as the throw is two-handed"], correct: "On or behind the touchline", explanation: "During a throw-in, both feet must be on or behind the touchline when releasing the ball." },
+      { id: 41, q: "What is awarded when the attacking team last touches the ball and it crosses the defending team's goal line?", options: ["Goal kick", "Corner", "Throw-in", "Indirect free kick"], correct: "Goal kick", explanation: "A goal kick is awarded when the attacking team last touches the ball before it crosses the defending team’s goal line." },
+      { id: 42, q: "When forming a defensive wall for a free kick, where must the wall stand relative to the penalty area?", options: ["Outside the penalty area and 10 yards from the ball", "Inside the penalty area", "On the goal line", "At the corner arc"], correct: "Outside the penalty area and 10 yards from the ball", explanation: "During a free kick outside the penalty area, the defensive wall must remain outside the penalty area and at least 10 yards from the ball." },
+
+      // --- TOPIC 6: OFFSIDE RULE ---
+      { id: 43, q: "According to the Academy's definition, which parts of a player's body can place them in an offside position?", options: ["Head, body, or feet", "Only the feet", "Any part of the body, including the hands and arms", "Only the torso and head"], correct: "Head, body, or feet", explanation: "The offside boundary is judged by any part of the head, body, or feet that is nearer to the opponent's goal line. Hands and arms are excluded." },
+      { id: 44, q: "Can a player be offside in their own half?", options: ["Yes", "No"], correct: "No", explanation: "A player cannot be in an offside position while in their own half of the pitch." },
+      { id: 45, q: "When is a player in an offside position penalized?", options: ["Only if interfering with play, opponent, or gaining advantage", "Always if ahead of last defender", "When in the centre circle", "If in own half"], correct: "Only if interfering with play, opponent, or gaining advantage", explanation: "A player in an offside position is penalized only if they interfere with play, an opponent, or gain an advantage." },
+      { id: 46, q: "Is there offside when receiving the ball directly from a corner?", options: ["No", "Yes", "Only in the box", "Only if scoring"], correct: "No", explanation: "There is no offside offence when receiving the ball directly from a corner kick." },
+      { id: 47, q: "What does VAR stand for?", options: ["Video Assistant Referee", "Virtual Assistant Replay", "Verified Action Review", "Video Analysis Rule"], correct: "Video Assistant Referee", explanation: "VAR stands for Video Assistant Referee, a system used to review clear and obvious errors in decisions." },
+      { id: 48, q: "What is the core definition of an offside position?", options: ["Nearer to the goal line than the ball and 2nd-to-last opponent", "Standing in the penalty box", "Ahead of the goalkeeper", "Past the halfway line"], correct: "Nearer to the goal line than the ball and 2nd-to-last opponent", explanation: "A player is in an offside position if any part of their head, body, or feet is nearer to the opponent's goal line than both the ball and the second-last opponent." },
+      { id: 49, q: "From which of the following restarts is it impossible to be offside?", options: ["Goal Kick, Corner Kick, or Throw-In", "Direct Free Kick", "Indirect Free Kick", "Penalty Kick"], correct: "Goal Kick, Corner Kick, or Throw-In", explanation: "The Laws of the Game specifically exempt Goal Kicks, Corner Kicks, and Throw-Ins from the offside rule." },
+      { id: 50, q: "How is offside checked for extreme accuracy in modern elite football?", options: ["VAR using digital lines", "The referee's stopwatch", "Player sensors", "Goal-line technology"], correct: "VAR using digital lines", explanation: "Modern football uses VAR to check offsides using digital lines, often measuring by millimetres to ensure accuracy." }
+    ]
+  },
+
+  mod2: {
+    title: "Leagues & Cups",
+    questions: [
+      // --- TOPIC 1: WHAT IS A LEAGUE? (Questions 1-17) ---
+      { id: 1, q: "How many points are awarded for a WIN in modern football?", options: ["1 Point", "2 Points", "3 Points", "4 Points"], correct: "3 Points", explanation: "A win awards 3 points. This was changed from 2 points in 1981 to encourage attacking play." },
+      { id: 2, q: "How many points do teams receive for a DRAW?", options: ["0 Points", "1 Point", "2 Points", "3 Points"], correct: "1 Point", explanation: "A draw is worth 1 point for each team (shared spoils)." },
+      { id: 3, q: "How many points does a team get for a LOSS?", options: ["-1 Point", "0 Points", "1 Point", "Half a point"], correct: "0 Points", explanation: "A loss results in 0 points for the defeated team." },
+      { id: 4, q: "Why was the points system changed from 2 to 3 points in 1981?", options: ["To encourage attacking play and risk-taking", "To increase television broadcasting revenue", "To align with international FIFA tournament standards", "To give a mathematical advantage to the home team"], correct: "To encourage attacking play and risk-taking", explanation: "The change incentivized teams to risk losing in order to win, rather than settling for a draw." },
+      { id: 5, q: "MATH CHALLENGE: If a team wins 3 games, how many points do they have?", options: ["6", "9", "3", "12"], correct: "9", explanation: "3 wins x 3 points = 9 points." },
+      { id: 6, q: "MATH CHALLENGE: If a team draws 5 games, how many points do they have?", options: ["1", "3", "5", "15"], correct: "5", explanation: "5 draws x 1 point = 5 points." },
+      { id: 7, q: "MATH CHALLENGE: Team A has 2 wins, 1 draw, and 1 loss. Total points?", options: ["6", "7", "8", "9"], correct: "7", explanation: "(2 wins x 3) + (1 draw x 1) + (1 loss x 0) = 7 points." },
+      { id: 8, q: "MATH CHALLENGE: A team plays 10 games. They win 1 and lose 9. Points?", options: ["1", "3", "10", "0"], correct: "3", explanation: "1 win = 3 points. The 9 losses add nothing." },
+      { id: 9, q: "In a standard 20-team league, finishing in the 'Top 4' typically earns what?", options: ["Champions League Qualification", "Automatic entry to the FIFA Club World Cup", "Qualification for the Europa Conference League", "A financial bonus but no European football"], correct: "Champions League Qualification", explanation: "The Top 4 spots usually grant entry into the next season's Champions League." },
+      { id: 10, q: "What happens to the teams that finish in the bottom 3 spots of the Premier League?", options: ["They get a fine", "They are Relegated", "They play a playoff", "They lose points"], correct: "They are Relegated", explanation: "The bottom 3 teams drop down to the division below (The Championship)." },
+      { id: 11, q: "According to the 2023/24 Premier League table analyzed in the Academy, who won the title with 91 points?", options: ["Arsenal", "Liverpool", "Man City", "Aston Villa"], correct: "Man City", explanation: "Man City were crowned champions with 91 points." },
+      { id: 12, q: "According to the 2023/24 Premier League table analyzed in the Academy, which team finished 2nd with 89 points?", options: ["Liverpool", "Arsenal", "Man City", "Tottenham"], correct: "Arsenal", explanation: "Arsenal finished as runners-up with 89 points." },
+      { id: 13, q: "According to the 2023/24 Premier League table analyzed in the Academy, which of these teams was relegated?", options: ["Aston Villa", "Luton Town", "Crystal Palace", "Wolves"], correct: "Luton Town", explanation: "Luton Town finished 18th and were relegated." },
+      { id: 14, q: "What is the status of a team finishing 12th in a 20-team league?", options: ["Champions", "Relegated", "Mid-Table (Safe)", "Qualified for Europe"], correct: "Mid-Table (Safe)", explanation: "Positions in the middle (like 12th) are safe from relegation but do not qualify for Europe." },
+      { id: 15, q: "MOGUL MATH: Your club has recorded 4 wins, 2 draws, and 4 losses in their first 10 matches. What is your current points total?", options: ["10 Points", "12 Points", "14 Points", "16 Points"], correct: "14 Points", explanation: "4 wins (12 points) + 2 draws (2 points) + 4 losses (0 points) = 14 total points." },
+      { id: 16, q: "MATH CHALLENGE: A team goes 'Invincible' (38 games, 0 losses) but draws 38 times. Points?", options: ["38", "114", "90", "76"], correct: "38", explanation: "38 draws x 1 point = 38 points. Being invincible doesn't guarantee a high score if you don't win!" },
+      { id: 17, q: "MATH CHALLENGE: To reach 100 points, how many wins (min) do you need if you never draw?", options: ["30", "33", "34", "38"], correct: "34", explanation: "33 wins = 99 pts. You need 34 wins (102 pts) to break the 100 barrier without draws." },
+
+      // --- TOPIC 2: THE BIG FIVE (Questions 18-34) ---
+      { id: 18, q: "Which two clubs hold the record for the most English top-flight titles (20)?", options: ["Arsenal & Chelsea", "Man Utd & Liverpool", "Man City & Everton", "Leeds & Villa"], correct: "Man Utd & Liverpool", explanation: "Both Manchester United and Liverpool have won 20 English league titles." },
+      { id: 19, q: "Which club holds the record for the most Spanish La Liga titles (36)?", options: ["Barcelona", "Real Madrid", "Atletico Madrid", "Valencia"], correct: "Real Madrid", explanation: "Real Madrid is the most successful club in Spanish history with 36 titles." },
+      { id: 20, q: "Which club dominates the German Bundesliga with 34 titles?", options: ["Dortmund", "Bayern Munich", "Leverkusen", "Hamburg"], correct: "Bayern Munich", explanation: "Bayern Munich is the undisputed king of German football." },
+      { id: 21, q: "Which club holds the record for the most Italian Serie A titles (36)?", options: ["AC Milan", "Inter Milan", "Juventus", "Napoli"], correct: "Juventus", explanation: "Juventus has won the most Serie A championships." },
+      { id: 22, q: "Which French club has the most Ligue 1 titles (13)?", options: ["Marseille", "Saint-Étienne", "PSG", "Monaco"], correct: "PSG", explanation: "Paris Saint-Germain leads the French all-time table with 13 titles." },
+      { id: 23, q: "Why is the Premier League widely considered the 'Global Super League'?", options: ["It features a 24-team structure", "It is the only league to utilize a winter break", "It generates vastly superior global television revenue", "It is historically the oldest league in Europe"], correct: "It generates vastly superior global television revenue", explanation: "Massive TV revenue allows the PL to attract the best global talent and outspend its European rivals." },
+      { id: 24, q: "What defines the '50+1 Rule' in the German Bundesliga?", options: ["Club members (the fans) must retain a majority of the voting rights", "A single corporate investor must hold 51% of the financial shares", "The local government subsidizes 51% of the stadium's operating costs", "Clubs are required to spend 51% of their revenue on academy development"], correct: "Club members (the fans) must retain a majority of the voting rights", explanation: "This rule ensures fans keep control of the club, preventing complete corporate takeovers and keeping ticket prices low." },
+      { id: 25, q: "Which league was the world's #1 from the 80s to the early 2000s?", options: ["Premier League", "Serie A", "La Liga", "Bundesliga"], correct: "Serie A", explanation: "Italian football was the defensive and tactical peak of the world in that era." },
+      { id: 26, q: "What historical scandal ended Serie A's dominance in 2006?", options: ["The sudden collapse of domestic television rights", "Calciopoli (Widespread Match-Fixing)", "The bankruptcy of major club sponsors", "A mass exodus of players to the newly formed Premier League"], correct: "Calciopoli (Widespread Match-Fixing)", explanation: "The Calciopoli scandal saw Juventus relegated and irreparably damaged the league's global reputation and financial power." },
+      { id: 27, q: "Ligue 1 is known as a 'hotbed' for what?", options: ["Old goalkeepers", "Young French talent", "Defensive tactics", "Rich owners"], correct: "Young French talent", explanation: "France produces an incredible volume of elite young players like Mbappé." },
+      { id: 28, q: "Which Spanish style dominated the 2010s?", options: ["Kick and Rush", "Tiki-Taka", "Catenaccio", "Long Ball"], correct: "Tiki-Taka", explanation: "The technical, possession-based 'Tiki-Taka' defined Spanish dominance." },
+      { id: 29, q: "Why did European giants attempt to form a breakaway 'Super League' in 2021?", options: ["To force FIFA to reschedule the World Cup", "To combat the overwhelming financial dominance of the Premier League", "To avoid playing matches on weekends", "To establish a uniform set of tactical rules across the continent"], correct: "To combat the overwhelming financial dominance of the Premier League", explanation: "The financial gap between the PL and the rest of Europe drove clubs like Real Madrid and Juventus to attempt a breakaway to secure guaranteed revenue." },
+      { id: 30, q: "Which French player won the 2025 Ballon d'Or according to the lesson?", options: ["Mbappé", "Ousmane Dembélé", "Griezmann", "Saliba"], correct: "Ousmane Dembélé", explanation: "The lesson cites Ousmane Dembélé as the 2025 winner." },
+      { id: 31, q: "Which Spanish clubs defined La Liga's complete dominance of Europe in the 2010s?", options: ["Real Madrid, Barcelona, Sevilla & Atletico", "Just Real Madrid & Barcelona", "Valencia & Villarreal", "Bilbao & Sociedad"], correct: "Real Madrid, Barcelona, Sevilla & Atletico", explanation: "These four clubs won multiple Champions League and Europa League titles during that decade." },
+      { id: 32, q: "According to the all-time English titles list, which club sits 3rd behind Man Utd and Liverpool with 13 titles?", options: ["Chelsea", "Man City", "Arsenal", "Everton"], correct: "Arsenal (13)", explanation: "Arsenal is historically the third most successful English club with 13 league titles." },
+      { id: 33, q: "Saint-Étienne is historically significant in which country?", options: ["England", "France", "Germany", "Italy"], correct: "France", explanation: "Saint-Étienne has 10 titles, historically one of France's giants." },
+      { id: 34, q: "Which Italian club has 19 titles?", options: ["Juventus", "AC Milan", "Roma", "Lazio"], correct: "AC Milan", explanation: "AC Milan sits on 19 titles, just behind Inter (20) and Juve (36)." },
+
+      // --- TOPIC 3: THE PREMIER LEAGUE (Questions 35-51) ---
+      { id: 35, q: "In what year was the Premier League formed?", options: ["1988", "1992", "2000", "1995"], correct: "1992", explanation: "The top clubs broke away from the Football League in 1992." },
+      { id: 36, q: "What was the main reason for the 1992 breakaway?", options: ["To negotiate independent TV deals and retain the broadcasting revenue", "To reduce the league size to 18 teams and ease fixture congestion", "To bypass UEFA regulations regarding foreign player quotas", "To create a closed league where the founding members could not be relegated"], correct: "To negotiate independent TV deals and retain the broadcasting revenue", explanation: "Clubs wanted to keep the broadcast revenue rather than sharing it with lower leagues." },
+      { id: 37, q: "Which manager created the 'Dynasty' at Manchester United?", options: ["Arsène Wenger", "Jose Mourinho", "Sir Alex Ferguson", "Pep Guardiola"], correct: "Sir Alex Ferguson", explanation: "Ferguson won a record 13 Premier League titles." },
+      { id: 38, q: "Who were 'The Invincibles'?", options: ["Man City 2018", "Arsenal 2003-04", "Chelsea 2005", "Liverpool 2020"], correct: "Arsenal 2003-04", explanation: "Arsenal went the entire 38-game season without a single defeat." },
+      { id: 39, q: "Which team holds the record for conceding the fewest goals (15) in a season?", options: ["Arsenal", "Chelsea", "Man Utd", "Liverpool"], correct: "Chelsea", explanation: "Chelsea's 'The Wall' defence in 2004-05 conceded just 15 goals." },
+      { id: 40, q: "Which team won the league at 5,000-to-1 odds?", options: ["Blackburn", "Leicester City", "Tottenham", "Leeds"], correct: "Leicester City", explanation: "Leicester City's 2016 win is considered the greatest miracle in sports history." },
+      { id: 41, q: "Which team broke the 100-point barrier to become 'The Centurions'?", options: ["Man City", "Liverpool", "Chelsea", "Arsenal"], correct: "Man City", explanation: "Man City (2017-18) were the first to reach 100 points." },
+      { id: 42, q: "Who is the Premier League's all-time leading goalscorer?", options: ["Harry Kane", "Alan Shearer", "Wayne Rooney", "Thierry Henry"], correct: "Alan Shearer", explanation: "Alan Shearer scored 260 goals." },
+      { id: 43, q: "How many goals did Alan Shearer score in the Premier League?", options: ["200", "208", "260", "300"], correct: "260", explanation: "Shearer's record stands at 260 goals." },
+      { id: 44, q: "As of the modern era, only three players have broken the legendary '200 Goal' barrier in the Premier League. Which of the following elite strikers is NOT in the 200-Goal Club?", options: ["Thierry Henry", "Alan Shearer", "Wayne Rooney", "Harry Kane"], correct: "Thierry Henry", explanation: "Shearer (260), Kane (213), and Rooney (208) are the only three players to break the 200-goal milestone. Thierry Henry finished his legendary Arsenal career with 175." },
+      { id: 45, q: "How many games did it take Erling Haaland to score 100 goals?", options: ["150", "111", "90", "200"], correct: "111", explanation: "He set the record by reaching 100 goals in just 111 matches." },
+      { id: 46, q: "What is the realistic points target for a modern Champion?", options: ["75+", "80+", "90+", "100+"], correct: "90+", explanation: "The Guardiola-Klopp era raised the standard, making 90+ points the new benchmark." },
+      { id: 47, q: "Who sits 2nd on the all-time scoring list with 213 goals?", options: ["Wayne Rooney", "Harry Kane", "Andy Cole", "Sergio Aguero"], correct: "Harry Kane", explanation: "Harry Kane is second with 213 goals." },
+      { id: 48, q: "Which broadcaster funded the PL revolution in 1992?", options: ["BBC", "ITV", "Sky Sports", "Amazon"], correct: "Sky Sports", explanation: "The Sky Sports TV deal was the catalyst for the league's wealth." },
+      { id: 49, q: "Sir Alex Ferguson defined the Premier League era by winning a record number of titles. How many?", options: ["10", "13", "15", "20"], correct: "13", explanation: "The lesson states Sir Alex Ferguson won a record 13 titles, creating the Man Utd dynasty." },
+      { id: 50, q: "Which two managers defined the 'Modern Era' of high standards?", options: ["Mourinho & Wenger", "Guardiola & Klopp", "Ferguson & Dalglish", "Arteta & Emery"], correct: "Guardiola & Klopp", explanation: "Their rivalry pushed the required points total to near-perfection." },
+      { id: 51, q: "Wayne Rooney scored how many PL goals?", options: ["180", "208", "260", "150"], correct: "208", explanation: "Rooney is 3rd all-time with 208 goals." },
+
+      // --- TOPIC 4: ENGLISH TRADITIONS (Questions 52-68) ---
+      { id: 52, q: "In what year was the FA Cup founded?", options: ["1888", "1992", "1871", "1901"], correct: "1871", explanation: "The FA Cup is the oldest national football competition, founded in 1871." },
+      { id: 53, q: "How is the FA Cup format described compared to the League?", options: ["A Marathon", "A Sprint", "A League", "A Friendly"], correct: "A Sprint", explanation: "The League is a marathon; the Cup is a knockout sprint." },
+      { id: 54, q: "What is a 'Giant Killing'?", options: ["A lower-league team eliminating a top-flight club in a knockout cup", "A team winning the league title against extreme preseason odds", "A heavily favored team winning by a margin of 5 or more goals", "A club bankrupting a larger rival through aggressive financial spending"], correct: "A lower-league team eliminating a top-flight club in a knockout cup", explanation: "The magic of the cup occurs when lower-league or amateur teams defy the odds to defeat elite professional giants." },
+      { id: 55, q: "How many teams (approx) enter the FA Cup?", options: ["20", "92", "700+", "100"], correct: "700+", explanation: "Over 700 teams from 10 tiers of English football compete." },
+      { id: 56, q: "Which club holds the record for most FA Cup wins (14)?", options: ["Man Utd", "Liverpool", "Arsenal", "Chelsea"], correct: "Arsenal", explanation: "Arsenal are the record holders with 14 trophies." },
+      { id: 57, q: "Where is the FA Cup Final traditionally played?", options: ["Old Trafford", "Wembley Stadium", "Anfield", "The Emirates"], correct: "Wembley Stadium", explanation: "Wembley is the 'Home of Football' and hosts the final." },
+      { id: 58, q: "Which team was known as the 'Crazy Gang'?", options: ["Liverpool", "Wimbledon", "Millwall", "Leeds"], correct: "Wimbledon", explanation: "Wimbledon's aggressive team was nicknamed the Crazy Gang." },
+      { id: 59, q: "Who did Wimbledon beat in the 1988 FA Cup Final upset?", options: ["Man Utd", "Arsenal", "Liverpool", "Everton"], correct: "Liverpool", explanation: "They shocked the 'unbeatable' Liverpool 1-0." },
+      { id: 60, q: "What is 'The Double'?", options: ["Winning 2 games in a row", "Winning the League and FA Cup in one season", "Scoring 2 goals", "Beating your rival twice"], correct: "Winning the League and FA Cup in one season", explanation: "Winning the two biggest domestic prizes is 'The Double'." },
+      { id: 61, q: "Who competes in the League Cup (Carabao Cup)?", options: ["All 700 teams", "Only the 92 professional clubs", "Only the Premier League", "Only amateurs"], correct: "Only the 92 professional clubs", explanation: "Unlike the FA Cup, the League Cup is restricted to the top 4 professional divisions." },
+      { id: 62, q: "When is the League Cup Final typically played?", options: ["May", "August", "February", "December"], correct: "February", explanation: "It offers the season's first silverware with a final in February." },
+      { id: 63, q: "Which is considered more prestigious: FA Cup or League Cup?", options: ["League Cup", "FA Cup", "They are equal", "Neither"], correct: "FA Cup", explanation: "The FA Cup's history and open format make it the more prestigious prize." },
+      { id: 64, q: "The Premier League is described as a 'Marathon' of how many games?", options: ["30", "38", "40", "46"], correct: "38", explanation: "The league season consists of 38 matches." },
+      { id: 65, q: "What defines the 'Magic' of the FA Cup?", options: ["The unseeded, open-entry format allowing amateurs to play elite professionals", "The guarantee of Champions League qualification for the winner", "The rule granting automatic home advantage to the lower-division team", "The absence of extra time or penalty shootouts in the later rounds"], correct: "The unseeded, open-entry format allowing amateurs to play elite professionals", explanation: "The fact that amateurs can play professionals in a completely open draw creates the historical magic of the tournament." },
+      { id: 66, q: "Which London stadium is called the 'Home of Football'?", options: ["Highbury", "Wembley", "Stamford Bridge", "White Hart Lane"], correct: "Wembley", explanation: "Wembley Stadium holds this title." },
+      { id: 67, q: "Which two clubs are the only English teams to win the 'Continental Treble'?", options: ["Liverpool & Arsenal", "Man Utd & Man City", "Chelsea & Man City", "Man Utd & Liverpool"], correct: "Man Utd & Man City", explanation: "Only Man Utd (1999) and Man City (2023) have won the League, FA Cup, and UCL in one season." },
+      { id: 68, q: "What three trophies make up the classic 'Treble'?", options: ["League, FA Cup, Champions League", "League, League Cup, FA Cup", "League, World Cup, Euros", "FA Cup, League Cup, Shield"], correct: "League, FA Cup, Champions League", explanation: "The Continental Treble consists of the primary League, primary Cup, and primary European trophy." },
+
+      // --- TOPIC 5: CHAMPIONS LEAGUE (Questions 69-84) ---
+      { id: 69, q: "What was the Champions League originally called (1955-1992)?", options: ["The UEFA Cup", "The European Cup", "The World League", "The Super Cup"], correct: "The European Cup", explanation: "It was rebranded from the European Cup to the Champions League in 1992." },
+      { id: 70, q: "Which nickname is given to the CL Trophy?", options: ["The Big Vase", "Ol' Big Ears", "The Silver Mug", "The Holy Grail"], correct: "Ol' Big Ears", explanation: "The trophy is famous for its large handles." },
+      { id: 71, q: "In the 2024 revamp, the Group Stage was replaced by what?", options: ["A Knockout Tree", "A League Phase", "A Regional Group", "A Super League"], correct: "A League Phase", explanation: "The 36 teams now compete in a single league table." },
+      { id: 72, q: "How many matches does each team play in the new League Phase?", options: ["6", "8", "10", "4"], correct: "8", explanation: "Teams play 8 matches (4 home, 4 away) against different opponents." },
+      { id: 73, q: "How many teams are in the new single league table?", options: ["32", "36", "40", "24"], correct: "36", explanation: "The format expanded from 32 to 36 teams." },
+      { id: 74, q: "Which club won the first 5 European Cups in a row?", options: ["AC Milan", "Liverpool", "Real Madrid", "Ajax"], correct: "Real Madrid", explanation: "Real Madrid dominated the early era (1956-1960)." },
+      { id: 75, q: "Real Madrid's obsession with 'La Décima' culminated in 2014. What does this term specifically refer to?", options: ["Winning 10 consecutive La Liga titles", "Their 10th European Cup / Champions League title", "Signing their 10th Ballon d'Or winner", "Reaching 10 consecutive finals"], correct: "Their 10th European Cup / Champions League title", explanation: "La Décima is the Spanish term for 'The Tenth', referring to their historic 10th European Cup victory." },
+      { id: 76, q: "Which manager won 3 UCL titles in a row with Real Madrid?", options: ["Ancelotti", "Zidane", "Mourinho", "Guardiola"], correct: "Zidane", explanation: "Zinedine Zidane managed Madrid to a 'Three-peat' (2016-18)." },
+      { id: 77, q: "Who is the all-time top scorer in the Champions League?", options: ["Messi", "Haaland", "Ronaldo", "Lewandowski"], correct: "Ronaldo", explanation: "Cristiano Ronaldo leads with 140 goals." },
+      { id: 78, q: "Which English club has the most UCL titles (6)?", options: ["Man Utd", "Liverpool", "Chelsea", "Nottingham Forest"], correct: "Liverpool", explanation: "Liverpool are the English kings of Europe with 6 titles." },
+      { id: 79, q: "The 'Coefficient System' ranks leagues based on performance over how many years?", options: ["1 year", "3 years", "5 years", "10 years"], correct: "5 years", explanation: "UEFA uses a 5-year rolling average to rank leagues." },
+      { id: 80, q: "What happens to the bottom 12 teams in the new League Phase?", options: ["Relegated to Europa League", "Eliminated completely", "Play a playoff", "Restart the group"], correct: "Eliminated completely", explanation: "There is no more drop-down to the Europa League for the bottom teams." },
+      { id: 81, q: "What is the 'Backdoor' prize for winning the Europa League?", options: ["Cash only", "A friendly with the CL winner", "Champions League Qualification", "A bye to the final"], correct: "Champions League Qualification", explanation: "Winning the Europa League grants entry to the next season's UCL." },
+      { id: 82, q: "Which English club famously scored two stoppage-time goals to defeat Bayern Munich in the 1999 Final?", options: ["Liverpool", "Manchester United", "Chelsea", "Arsenal"], correct: "Manchester United", explanation: "United scored two goals in 'Fergie Time' to win 2-1 and complete the Treble." },
+      { id: 83, q: "In 1994, AC Milan produced a tactical masterclass to thrash which heavily favored 'Dream Team' 4-0?", options: ["Ajax", "Juventus", "Barcelona", "Marseille"], correct: "Barcelona", explanation: "Cruyff's Barcelona were expected to win easily, but Milan destroyed them 4-0." },
+      { id: 84, q: "Under the new 2024 Champions League format, what happens to the teams that finish between 9th and 24th in the League Phase?", options: ["They must compete in a knockout play-off round", "They drop down into the Europa League", "They automatically qualify for the Round of 16", "They are immediately eliminated"], correct: "They must compete in a knockout play-off round", explanation: "While the top 8 teams receive a bye, teams finishing 9th to 24th must compete in a high-stakes play-off round to reach the last 16." },
+    
+      // --- TOPIC 6: THE WORLD CUP (Questions 85-100) ---
+      { id: 85, q: "How often is the FIFA World Cup held?", options: ["Every year", "Every 2 years", "Every 4 years", "Every 5 years"], correct: "Every 4 years", explanation: "The World Cup remains a quadrennial tournament, held every 4 years." },
+      { id: 86, q: "Which nation won the first ever World Cup in 1930?", options: ["Brazil", "Italy", "Uruguay", "Argentina"], correct: "Uruguay", explanation: "Uruguay hosted and won the first tournament." },
+      { id: 87, q: "What was the original World Cup trophy called?", options: ["The FIFA Cup", "The Jules Rimet", "The Golden Globe", "The Victory Cup"], correct: "The Jules Rimet", explanation: "It was named after the FIFA president who created the tournament." },
+      { id: 88, q: "Which two continents have won every World Cup in history?", options: ["Europe & Asia", "South America & Europe", "Africa & South America", "North America & Europe"], correct: "South America & Europe", explanation: "No team from outside these two continents has ever won the prize." },
+      { id: 89, q: "Which country has won the most World Cups (5)?", options: ["Germany", "Italy", "Argentina", "Brazil"], correct: "Brazil", explanation: "Brazil are the 'Pentacampeões' (Five-time champions)." },
+      { id: 90, q: "Who is the only player in history to win 3 World Cups?", options: ["Maradona", "Messi", "Pelé", "Zidane"], correct: "Pelé", explanation: "Pelé won the title in 1958, 1962, and 1970." },
+      { id: 91, q: "Which nation is the only one to play in every single tournament?", options: ["Germany", "Brazil", "Argentina", "France"], correct: "Brazil", explanation: "Brazil has perfect attendance since 1930." },
+      { id: 92, q: "What was the 'Maracanaço'?", options: ["A dance", "Uruguay beating Brazil in 1950", "Pelé's first goal", "A stadium collapse"], correct: "Uruguay beating Brazil in 1950", explanation: "Uruguay stunned the hosts Brazil in the deciding match of 1950." },
+      { id: 93, q: "Who scored the FIRST ever hat-trick in a World Cup Final (1966)?", options: ["Kylian Mbappé", "Geoff Hurst", "Pelé", "Ronaldo"], correct: "Geoff Hurst", explanation: "Geoff Hurst scored 3 against West Germany. Mbappé became the second to do so in 2022." },
+      { id: 94, q: "Diego Maradona scored the 'Hand of God' against which team?", options: ["Brazil", "Germany", "England", "Italy"], correct: "England", explanation: "He scored the controversial goal against England in the 1986 quarter-final." },
+      { id: 95, q: "How did Zinedine Zidane end his World Cup career in 2006?", options: ["Scoring a winner", "With a headbutt and red card", "Lifting the trophy", "Injured on the bench"], correct: "With a headbutt and red card", explanation: "He was sent off for headbutting Materazzi in the final." },
+      { id: 96, q: "What was the result of the 2014 semi-final between Germany and Brazil?", options: ["1-0", "2-1", "7-1", "3-3"], correct: "7-1", explanation: "Germany dismantled the hosts 7-1 in a historic shock." },
+      { id: 97, q: "Who is the all-time top scorer in World Cup history (16 goals)?", options: ["Ronaldo (R9)", "Miroslav Klose", "Gerd Muller", "Messi"], correct: "Miroslav Klose", explanation: "German striker Klose holds the record with 16 goals." },
+      { id: 98, q: "Why was the 2022 World Cup held in Winter?", options: ["COVID-19", "Extreme heat in Qatar", "TV schedules", "Stadium construction delays"], correct: "Extreme heat in Qatar", explanation: "Summer temperatures in Qatar made playing impossible." },
+      { id: 99, q: "Who finally won the World Cup in 2022?", options: ["Cristiano Ronaldo", "Kylian Mbappé", "Lionel Messi", "Neymar"], correct: "Lionel Messi", explanation: "Messi led Argentina to glory in Qatar." },
+      { id: 100, q: "How many teams will play in the 2026 World Cup?", options: ["32", "40", "48", "64"], correct: "48", explanation: "The tournament expands to 48 teams for the first time." }
+    ]
+  },
+
+ mod3: {
+    title: "Elite Strategy",
+    questions: [
+      // --- TOPIC 1: MODERN FORMATIONS (Questions 1-20) ---
+      { id: 1, q: "In a 4-3-3, what is the primary defensive function of the Single Pivot (#6)?", options: ["To drive forward into the box", "To screen the back four and cut passing lanes", "To man-mark the opposing #10", "To drift wide and cover the full-backs"], correct: "To screen the back four and cut passing lanes", explanation: "The Single Pivot sits centrally in front of the defence to screen the back four and cut out vertical passing lanes." },
+      { id: 2, q: "Where do the two #8s position themselves in a modern attacking 4-3-3?", options: ["Deep alongside the #6", "In the advanced half-spaces", "Hugging the touchline", "Inside the penalty area only"], correct: "In the advanced half-spaces", explanation: "The #8s push into advanced half-spaces (channels) to create a 5-man attacking line alongside the front three." },
+      { id: 3, q: "What is the tactical goal of wide forwards staying 'high and wide'?", options: ["To overload the central midfield", "To stretch the defence and isolate full-backs 1v1", "To track the opposing wing-backs deep", "To support the defensive transition"], correct: "To stretch the defence and isolate full-backs 1v1", explanation: "Staying wide forces the defensive line to expand, creating gaps in the middle or isolating the full-back 1v1." },
+      { id: 4, q: "What is the specific risk of the 'Double Pivot' in a 4-2-3-1 pushing too high?", options: ["The striker becomes isolated", "The back four is exposed to direct counter-attacks", "The team loses width", "The wingers cannot cut inside"], correct: "The back four is exposed to direct counter-attacks", explanation: "If both anchors push up simultaneously, the defensive screen is lost, leaving the centre-backs vulnerable to transitions." },
+      { id: 5, q: "What is the primary function of a 'False Nine'?", options: ["To act as a target man for crosses", "To drop deep and pull centre-backs out of position", "To run in behind the defence", "To drift wide to the wings"], correct: "To drop deep and pull centre-backs out of position", explanation: "A False Nine drops into midfield to create a numerical overload, forcing CBs to decide whether to follow (leaving space) or stay (allowing the turn)." },
+      { id: 6, q: "SCENARIO: You instruct your striker to play as a 'False 9' and drop deep. However, your wingers remain static on the touchline. Why has this system failed?", options: ["The midfield is too congested.", "The full-backs are blocked from overlapping.", "The space vacated by the striker is not being filled, killing the goal threat.", "The defensive line height is too low."], correct: "The space vacated by the striker is not being filled, killing the goal threat.", explanation: "The Seesaw Principle: If the striker leaves the box, the wingers MUST run diagonally behind to fill the space." },
+      { id: 7, q: "How is a 'Box Midfield' typically created in a 3-4-3 hybrid system?", options: ["By pushing the centre-back into midfield", "Wide forwards moving inside to join central midfielders", "The goalkeeper joining the line", "Full-backs inverting completely"], correct: "Wide forwards moving inside to join central midfielders", explanation: "Moving wide forwards narrow alongside the two central mids forms a box shape (two deep, two advanced)." },
+      { id: 8, q: "What specific numerical advantage does a Box Midfield target against a standard midfield?", options: ["2v1", "4v3 or 4v2", "3v3 Man-to-Man", "5v5"], correct: "4v3 or 4v2", explanation: "The box creates a 4v3 or 4v2 overload in the central engine room, ensuring a free man is always available." },
+      { id: 9, q: "What does 'Verticality' mean in elite tactical analysis?", options: ["Playing high balls only", "Passing forward to bypass defensive lines", "Keeping possession sideways", "Dribbling toward the corner flag"], correct: "Passing forward to bypass defensive lines", explanation: "Verticality refers to forward passes that break through opposition lines rather than safe lateral possession." },
+      { id: 10, q: "What is the 'Overload to Isolate' strategy?", options: ["Creating a 2v1 on the wing", "Drawing defence to one side to create 1v1 space on the other", "Playing through the center exclusively", "Defending deep to counter"], correct: "Drawing defence to one side to create 1v1 space on the other", explanation: "Teams overload one flank to force the defence to shift, then rapidly switch play to the isolated winger on the far side." },
+      { id: 11, q: "Which player types are described as 'Elite Engine' requirements for the 3-4-3?", options: ["Wing-backs", "Goalkeepers", "False Nines", "Centre-backs"], correct: "Wing-backs", explanation: "Wing-backs must cover the entire flank (defence to attack) for 90 minutes, requiring elite stamina." },
+      { id: 12, q: "In a 4-2-3-1 system, what is the primary structural purpose of the 'Double Pivot'?", options: ["To push into the penalty area and score goals", "To provide a secure defensive screen in front of the back four", "To overlap the wingers on the touchline", "To man-mark the opponent's centre-backs"], correct: "To provide a secure defensive screen in front of the back four", explanation: "The two deep midfielders (the Double Pivot) anchor the midfield, allowing the four attacking players ahead of them to operate with freedom." },
+      { id: 13, q: "Who are the 'Prototypes' mentioned for the elite technical winger role?", options: ["Haaland & Kane", "Olise & Yamal", "Rice & Rodri", "Walker & Stones"], correct: "Olise & Yamal", explanation: "Michael Olise and Lamine Yamal are cited as technical masters capable of exploiting wide 1v1 situations." },
+      { id: 14, q: "In a defensive phase, what shape does the modern 3-4-3 usually collapse into?", options: ["4-4-2", "5-4-1", "4-3-3", "4-5-1"], correct: "5-4-1", explanation: "Wing-backs drop deep to form a back five, creating a compact 5-4-1 defensive block." },
+      { id: 15, q: "What allows the two #8s in a 4-3-3 to push forward safely?", options: ["The opponent playing deep", "The Single Pivot (#6) providing security", "The high defensive line", "The goalkeeper sweeping"], correct: "The Single Pivot (#6) providing security", explanation: "The defensive security and screening of the #6 allows the other midfielders to take attacking risks." },
+      { id: 16, q: "What is the tactical term for the channel between the wing and the centre?", options: ["The Overlap Zone", "The Half-Space", "The Transition Channel", "The Pivot Zone"], correct: "The Half-Space", explanation: "The Half-Space is the vertical corridor between the wide area and the centre, crucial for modern attacking play." },
+      { id: 17, q: "Why might a team use 'Inverted Wing-Backs' in possession?", options: ["To widen the pitch", "To create a central numerical overload", "To mark the opposing winger", "To allow the Centre-Backs to overlap"], correct: "To create a central numerical overload", explanation: "Moving a full-back into midfield adds an extra body to control possession and stop counters." },
+      { id: 18, q: "In the 4-2-3-1, how many 'creators' operate between the lines?", options: ["1 (The #10 only)", "2 (The full-backs)", "3 (The #10 and two attacking midfielders)", "4 (Including the striker)"], correct: "3 (The #10 and two attacking midfielders)", explanation: "The #10 and the two wide attacking midfielders act as the three creators behind the striker." },
+      { id: 19, q: "What defines an 'Elite Engine' physical profile?", options: ["Top sprint speed", "Ability to cover max distance at intensity for 90 mins", "Physical strength", "Jumping reach"], correct: "Ability to cover max distance at intensity for 90 mins", explanation: "Elite Engines possess the stamina to perform high-intensity work (sprints and recovery) for the full match." },
+      { id: 20, q: "What happens if a team fails to play 'Vertical' passes?", options: ["They lose possession immediately", "They play 'U-shaped' football", "They concede a counter-attack", "They force the opponent deep"], correct: "They play 'U-shaped' football", explanation: "Lack of verticality results in harmless sideways possession around the defensive block (U-Shape)." },
+
+      // --- TOPIC 2: THE HIGH PRESS (Questions 21-40) ---
+      { id: 21, q: "What is the '5-Second Rule' in high pressing?", options: ["Hold the ball for 5 seconds to draw fouls", "Hunt the ball for 5 seconds after losing it", "Delay the restart for 5 seconds", "Pass every 5 seconds"], correct: "Hunt the ball for 5 seconds after losing it", explanation: "Teams must aggressively hunt for 5 seconds after turnover; if they fail, they retreat to a block." },
+      { id: 22, q: "What is a 'Pressing Trigger'?", options: ["A tactical foul", "A specific cue (bad touch/slow pass) to initiate the press", "A shout from the goalkeeper", "The ball going out of play"], correct: "A specific cue (bad touch/slow pass) to initiate the press", explanation: "Triggers are specific moments that signal the team to initiate the collective hunt." },
+      { id: 23, q: "What is 'Shadow Cover'?", options: ["Man-marking the ball carrier", "Using body shape to block the passing lane to a player behind", "Tracking a runner deep", "Double-teaming the winger"], correct: "Using body shape to block the passing lane to a player behind", explanation: "Shadow cover prevents the ball carrier from passing to the player directly behind the presser." },
+      { id: 24, q: "Why is the touchline called the '12th Man'?", options: ["It limits the opponent's movement to 180 degrees, creating a dead zone", "It naturally forces the opponent to play back to their goalkeeper", "It expands the 'Green Ocean' to isolate the winger", "It forces the ball carrier to attempt a high-risk cross-field pass"], correct: "It limits the opponent's movement to 180 degrees, creating a dead zone", explanation: "The touchline acts as an impassable barrier, cutting off half the pitch and trapping the opponent." },
+      { id: 25, q: "What is the 'Green Ocean'?", options: ["The area between the midfield and defense", "The vast space behind a high defensive line", "The wide channels", "The penalty area"], correct: "The vast space behind a high defensive line", explanation: "The Green Ocean is the dangerous open space left behind a high backline, vulnerable to long balls." },
+      { id: 26, q: "What is the 'Domino Effect' in pressing?", options: ["Forcing a mistake leads to a goal", "If one player is bypassed, the whole system collapses", "Pressing leads to fatigue", "Switching play quickly"], correct: "If one player is bypassed, the whole system collapses", explanation: "Man-to-man pressing relies on every link holding; one failure exposes the space for everyone else." },
+      { id: 27, q: "Who initiates a unified high press?", options: ["The Defensive Midfielder", "The Striker", "The Centre-Back", "The Manager"], correct: "The Striker", explanation: "The striker is the first line of defence and triggers the team's Unified Press movement." },
+      { id: 28, q: "SCENARIO: You implement a High Press but your Centre-Backs lack 'Recovery Pace'. What is the specific tactical vulnerability?", options: ["Struggle to maintain possession.", "A single long ball into the 'Green Ocean' creates immediate 1v1 chances.", "Midfield overload.", "Goalkeeper forced to pass short."], correct: "A single long ball into the 'Green Ocean' creates immediate 1v1 chances.", explanation: "Without speed, a high line is suicide against long balls into the space behind." },
+      { id: 29, q: "What is 'Shepherding'?", options: ["Marking tight", "Guiding an opponent toward a trap (like the touchline)", "Fouling tactically", "Blocking a shot"], correct: "Guiding an opponent toward a trap (like the touchline)", explanation: "Defenders position themselves to force the attacker into a specific, limited area where they can be tackled." },
+      { id: 30, q: "What happens if the 5-second hunt fails?", options: ["Retreat to a defensive block", "Keep pressing individually to force an error", "Commit a tactical foul to break the rhythm", "Initiate a full-pitch man-to-man marking scheme"], correct: "Retreat to a defensive block", explanation: "To avoid fatigue and gaps, teams must retreat and reorganize if the immediate press fails." },
+      { id: 31, q: "Which defensive duo were cited as examples of Recovery Pace?", options: ["Terry & Vidic", "Saliba & Pacho", "Silva & Ramos", "Bonucci & Chiellini"], correct: "Saliba & Pacho", explanation: "Saliba (Arsenal) and Pacho (PSG) are modern examples of high-line defenders with elite speed." },
+      { id: 32, q: "Where does the defensive line sit during a high press?", options: ["Deep in the box", "Near the halfway line", "On the 18-yard line", "Marking the striker only"], correct: "Near the halfway line", explanation: "To compress the pitch vertically, the defensive line pushes up to the halfway line." },
+      { id: 33, q: "What is the 'Dead Zone'?", options: ["The centre circle", "The area against the touchline where options are cut", "The space behind the striker", "The goalkeeper's box"], correct: "The area against the touchline where options are cut", explanation: "The touchline trap creates a dead zone where the attacker has no passing angles." },
+      { id: 34, q: "Why is a bad touch a trigger?", options: ["It guarantees the pressing team a 2v1 numerical advantage", "It forces the attacker to look down, momentarily losing vision", "It naturally triggers the offside trap", "It allows the defensive line to drop deeper safely"], correct: "It forces the attacker to look down, momentarily losing vision", explanation: "A heavy touch forces the player to focus on the ball, blinding them to the incoming press." },
+      { id: 35, q: "What is the primary objective of pressing?", options: ["To win the ball back near the opponent's goal", "To force the opponent to play harmless U-shaped passes", "To exhaust the opposition's central midfielders", "To protect the 'Green Ocean' behind the defensive line"], correct: "To win the ball back near the opponent's goal", explanation: "Winning the ball high up the pitch creates immediate scoring chances against a disorganized defence." },
+      { id: 36, q: "Which managers are famous for High Pressing?", options: ["Mourinho & Conte", "Klopp & Guardiola", "Ancelotti & Allegri", "Simeone & Dyche"], correct: "Klopp & Guardiola", explanation: "Jurgen Klopp (Gegenpressing) and Pep Guardiola are pioneers of the modern high press." },
+      { id: 37, q: "What does 'Unified Pressing' mean?", options: ["Everyone marks a man", "The whole team moves together as one unit", "Only forwards press", "Pressing only in certain zones"], correct: "The whole team moves together as one unit", explanation: "Effective pressing requires the entire team to move in sync to close spaces collectively." },
+      { id: 38, q: "Why is the High Line considered 'High Risk'?", options: ["It requires too much stamina", "One accurate long ball can lead to a 1v1 with the keeper", "It leaves the midfield empty", "It causes offside traps to fail"], correct: "One accurate long ball can lead to a 1v1 with the keeper", explanation: "Leaving space behind means a single pass can bypass the entire defence." },
+      { id: 39, q: "How do teams use 'Cover Shadows' effectively?", options: ["By tackling from behind", "By positioning between the ball and the receiver", "By standing on the passing line", "By double marking"], correct: "By positioning between the ball and the receiver", explanation: "Cover shadows cut the supply line without needing to physically mark the receiver." },
+      { id: 40, q: "In the 'Manager's Dilemma' risk assessment, what is the consequence of playing a High Line without recovery pace?", options: ["The team will tire out by the 60th minute", "They get exposed by balls over the top into the 'Green Ocean'", "The offside trap becomes ineffective", "The midfield becomes too congested"], correct: "They get exposed by balls over the top into the 'Green Ocean'", explanation: "Slow defenders cannot catch attackers once the ball is played into the Green Ocean." },
+
+      // --- TOPIC 3: MID-BLOCK & TRANSITION (Questions 41-60) ---
+      { id: 41, q: "What is the primary goal of the 'Mid-Block'?", options: ["To win the ball high", "To congest the middle and deny central penetration", "To protect the 6-yard box", "To force long balls"], correct: "To congest the middle and deny central penetration", explanation: "A Mid-Block prioritizes protecting the central space over winning the ball high." },
+      { id: 42, q: "What shape is often associated with the Mid-Block?", options: ["The Diamond", "The Spider Web", "The Flat Four", "The Triangle"], correct: "The Spider Web", explanation: "The Spider Web describes a shape that traps opponents in the congested middle." },
+      { id: 43, q: "What is 'U-Shaped' football?", options: ["Attacking through the center", "Harmless sideways passing around a defensive block", "Long balls to the corners", "Counter-attacking speed"], correct: "Harmless sideways passing around a defensive block", explanation: "Effective blocks force the opponent to pass wide and back in a U-shape, preventing penetration." },
+      { id: 44, q: "What is the 'Chaos Window'?", options: ["The last 5 minutes", "The 3 seconds immediately after possession is won/lost", "Injury time", "The transfer window"], correct: "The 3 seconds immediately after possession is won/lost", explanation: "The moment of transition where both teams are disorganized." },
+      { id: 45, q: "Why is the Chaos Window highly dangerous for the team that just lost the ball?", options: ["They are expanded and disorganized because they were positioned to attack", "They are caught in a narrow, highly rigid defensive shape", "Their centre-backs are forced to man-mark the opposing wingers", "The offside rule is naturally bypassed during rapid transitions"], correct: "They are expanded and disorganized because they were positioned to attack", explanation: "Defences spread out to attack, leaving massive structural gaps if they suddenly lose possession before resetting." },
+      { id: 46, q: "What does 'Route 1' refer to?", options: ["Playing out from the back", "A direct long ball bypassing the midfield", "Dribbling through the center", "Crossing from deep"], correct: "A direct long ball bypassing the midfield", explanation: "Route 1 is the most direct path to goal, skipping the buildup phase entirely." },
+      { id: 47, q: "What is the 'High Outlet' role?", options: ["A holding midfielder", "An attacker who hangs on the last defender to exploit space", "A full-back staying wide", "A target man dropping deep"], correct: "An attacker who hangs on the last defender to exploit space", explanation: "The Outlet stays forward to give the team a target for the counter-attack." },
+      { id: 48, q: "Which player is a prime example of a High Outlet?", options: ["Declan Rice", "Kylian Mbappé", "Bernardo Silva", "Virgil van Dijk"], correct: "Kylian Mbappé", explanation: "Mbappé often stays forward to use his speed in transition moments." },
+      { id: 49, q: "What is the common nickname for a Low Block?", options: ["The Wall", "Parking the Bus", "The Fortress", "The Shell"], correct: "Parking the Bus", explanation: "Defending deep with all players is famously called 'Parking the Bus'." },
+      { id: 50, q: "SCENARIO: 90th Minute. Leading 1-0 in a final. You win possession. You signal 'Red Light'. What is the correct instruction?", options: ["Drive vertically to score.", "Switch play to the winger.", "Do NOT counter. Take the ball to the corner flag to kill the clock.", "Clear the ball long."], correct: "Do NOT counter. Take the ball to the corner flag to kill the clock.", explanation: "Elite Game Management: Winning teams kill the momentum to secure the result." },
+      { id: 51, q: "SCENARIO: Chasing a goal. You win the ball. What is the 'Green Light' decision?", options: ["Recycle possession", "Pass Vertical immediately to exploit the Chaos Window", "Pass back to the keeper", "Slow the tempo"], correct: "Pass Vertical immediately to exploit the Chaos Window", explanation: "When chasing a goal, you must exploit the opponent's disorganization instantly." },
+      { id: 52, q: "Where does a Low Block typically defend?", options: ["Near the halfway line", "Deep inside their own penalty area", "In the opponent's half", "On the flanks"], correct: "Deep inside their own penalty area", explanation: "Low Blocks concede territory to protect the immediate area in front of goal." },
+      { id: 53, q: "What is the key to a successful counter-attack?", options: ["Dribbling skill", "Verticality (Forward passing)", "Possession retention", "Switching play"], correct: "Verticality (Forward passing)", explanation: "Rapid forward passing exploits the Chaos Window before the defence resets." },
+      { id: 54, q: "What does a Mid-Block try to prevent?", options: ["Wing play", "Central passes between the lines", "Long balls", "Back passes"], correct: "Central passes between the lines", explanation: "The priority is stopping the opponent from playing through the center." },
+      { id: 55, q: "SCENARIO: You are defending in a Mid-Block. The opponent has 70% possession but only passes laterally between their defenders. What is your tactical assessment?", options: ["The Mid-Block is working perfectly, forcing harmless 'U-Shaped' football", "The Mid-Block has failed because the opponent is dominating possession", "The team must immediately abandon the block and initiate a High Press", "The opponent is effectively utilizing the 'Chaos Window'"], correct: "The Mid-Block is working perfectly, forcing harmless 'U-Shaped' football", explanation: "A successful Mid-Block concedes possession in non-threatening areas, prioritizing central solidity over winning the ball." },
+      { id: 56, q: "Why might a team choose Route 1?", options: ["To keep possession", "To bypass a high press", "To tire the opponent", "To draw fouls"], correct: "To bypass a high press", explanation: "Playing long eliminates the risk of losing the ball near your own goal." },
+      { id: 57, q: "What makes a 'Release Valve' effective?", options: ["Scoring goals", "Holding the ball up or winning a foul", "Dribbling past players", "Crossing early"], correct: "Holding the ball up or winning a foul", explanation: "The outlet must secure possession to allow teammates to move up the pitch." },
+      { id: 58, q: "What defines elite 'Transition Intelligence' in a player?", options: ["Reading the turnover before it happens to gain a kinetic head start", "Executing a perfectly timed slide tackle to halt a counter-attack", "Memorizing the opponent's attacking set-piece routines", "Instructing the defensive line to immediately drop into a Low Block"], correct: "Reading the turnover before it happens to gain a kinetic head start", explanation: "Elite players anticipate the turnover, allowing them to react and move into space before the opponent even realizes possession has changed." },
+      { id: 59, q: "Which area does Route 1 target?", options: ["The midfield battle", "The Green Ocean behind the defence", "The wide channels", "The feet of the #10"], correct: "The Green Ocean behind the defence", explanation: "Long balls aim for the space behind the high defensive line." },
+      { id: 60, q: "If a Mid-Block succeeds, where is the ball forced?", options: ["Through the middle", "Wide to the wings", "Back to the keeper", "Out for a throw-in"], correct: "Wide to the wings", explanation: "Forcing play wide is a win for the Mid-Block as it is less dangerous." },
+
+      // --- TOPIC 4: SET PLAYS (Questions 61-80) ---
+      { id: 61, q: "What percentage of modern elite goals come from set plays?", options: ["10%", "30%", "50%", "5%"], correct: "30%", explanation: "Set pieces now account for nearly a third of all goals." },
+      { id: 62, q: "What is 'Goalie Screening'?", options: ["Protecting the keeper", "Legally obstructing the keeper's path", "Marking the near post", "Blocking the view"], correct: "Legally obstructing the keeper's path", explanation: "Attackers block the keeper to delay their claim of the ball." },
+      { id: 63, q: "Why is 'Vertical Launch' (Long Throw) effective?", options: ["It reaches the box", "It has a flat trajectory and acts as a virtual corner", "It allows the team to reset", "It bypasses the midfield"], correct: "It has a flat trajectory and acts as a virtual corner", explanation: "Flat, fast throws pin defenders back and create chaos." },
+      { id: 64, q: "What is the specific rule exemption for throw-ins?", options: ["No fouls called", "No offside", "Two hands required", "Feet must be on the ground"], correct: "No offside", explanation: "You cannot be offside from a throw-in." },
+      { id: 65, q: "What defines an 'Inswinger'?", options: ["Curving away from goal", "Curving toward goal", "A straight delivery", "A lofted ball"], correct: "Curving toward goal", explanation: "Inswingers curve towards the goalkeeper." },
+      { id: 66, q: "What is the psychological effect of an Inswinger?", options: ["Confidence for the defence", "Keeper panic", "Easy to clear", "Predictability"], correct: "Keeper panic", explanation: "Balls curling onto the goal line force keepers to make risky decisions." },
+      { id: 67, q: "What defines an 'Outswinger'?", options: ["Curving toward goal", "Curving away from goal", "A driven cross", "A chip"], correct: "Curving away from goal", explanation: "Outswingers curve away from the keeper." },
+      { id: 68, q: "What is the tactical benefit of an Outswinger?", options: ["Direct goal threat", "Attackers can run onto the ball at pace", "Easier for the keeper", "Forces an own goal"], correct: "Attackers can run onto the ball at pace", explanation: "Moving away from goal allows attackers to generate power from their run." },
+      { id: 69, q: "What is a 'Hybrid' defensive system?", options: ["Man-marking only", "Zonal only", "A mix of Man-Marking and Zonal", "No specific system"], correct: "A mix of Man-Marking and Zonal", explanation: "Hybrid systems use zonal blockers for space and man-markers for threats." },
+      { id: 70, q: "Why have teams moved away from Pure Man-Marking?", options: ["It is too tiring", "It is vulnerable to screening and picks", "Players dislike it", "It causes penalties"], correct: "It is vulnerable to screening and picks", explanation: "Man-marking is easily disrupted by blockers (screens)." },
+      { id: 71, q: "What is the goal of 'Pinning' defenders?", options: ["To foul them", "To force them deep into the 6-yard box", "To tire them out", "To create a 1v1"], correct: "To force them deep into the 6-yard box", explanation: "Pinning keeps defenders close to their line, creating space at the penalty spot." },
+      { id: 72, q: "Who is the player associated with the 'Long Throw Legacy'?", options: ["David Beckham", "Rory Delap", "Gareth Bale", "Trent Alexander-Arnold"], correct: "Rory Delap", explanation: "Delap's throws for Stoke City were a famous tactical weapon." },
+      { id: 73, q: "Why is a flat trajectory preferred for long throws?", options: ["It looks better", "It is harder to defend than a looped ball", "It travels further", "It is more accurate"], correct: "It is harder to defend than a looped ball", explanation: "Flat, fast balls give defenders less time to adjust." },
+      { id: 74, q: "Can you be offside if you stand behind the last defender on a throw-in?", options: ["Yes", "No", "Only if you score", "Only if you touch the ball"], correct: "No", explanation: "The offside rule does not apply to the throw-in taker's target." },
+      { id: 75, q: "What is the primary tactical advantage of 'Goalie Screening' during a corner kick?", options: ["It delays the keeper's reaction time, removing the most dominant aerial defender from the sequence", "It forces the referee to focus on the six-yard box, masking fouls occurring elsewhere", "It automatically triggers a zonal marking response from the opposition's centre-backs", "It creates a permanent 2v1 numerical overload on the near post"], correct: "It delays the keeper's reaction time, removing the most dominant aerial defender from the sequence", explanation: "By legally blocking the keeper's path, the attacking team removes the only player allowed to use their hands to claim the aerial ball." },
+      { id: 76, q: "What determines whether to use an Inswinger or Outswinger?", options: ["Player preference", "The opponent's defensive setup", "The weather", "Random selection"], correct: "The opponent's defensive setup", explanation: "Tacticians choose delivery based on goalkeeper weakness and defensive line height." },
+      { id: 77, q: "Which club is cited as a modern master of set pieces?", options: ["Manchester City", "Arsenal", "Liverpool", "Real Madrid"], correct: "Arsenal", explanation: "Arsenal has heavily invested in set-piece coaching to boost goal output." },
+      { id: 78, q: "When executing a Goalie Screen, at what point does the tactic cross the boundary into an illegal foul?", options: ["Only if the attacker actively holds, pulls, or pushes the goalkeeper", "If the attacker makes any physical contact with the goalkeeper inside the six-yard box", "If the screen is initiated before the corner kick is officially taken", "Goalie screening is universally illegal under modern VAR regulations"], correct: "Only if the attacker actively holds, pulls, or pushes the goalkeeper", explanation: "Standing your ground to block a path is a legal tactical screen; it only becomes a foul if active holding or pushing occurs." },
+      { id: 79, q: "What does 'Zonal' defending prioritize?", options: ["The specific opponent", "The space/area", "The ball", "The second ball"], correct: "The space/area", explanation: "Zonal defenders protect key zones regardless of player movement." },
+      { id: 80, q: "In tactical analysis, why are set pieces specifically categorized as 'Dead Ball' situations?", options: ["Because open play has completely stopped and the ball is stationary before the restart", "Because the offside rule is temporarily suspended until the ball is touched by a second player", "Because the match clock is officially paused by the referee until the ball is kicked", "Because the defending team is forced to retreat into a passive Low Block"], correct: "Because open play has completely stopped and the ball is stationary before the restart", explanation: "The term refers to the ball being 'dead' (stationary and out of open play), giving teams time to execute highly rehearsed, static routines." },
+
+      // --- TOPIC 5: TOTAL FOOTBALL (Questions 81-100) ---
+      { id: 81, q: "Who are the founders of Total Football?", options: ["Guardiola & Mourinho", "Rinus Michels & Johan Cruyff", "Ferguson & Wenger", "Ancelotti & Zidane"], correct: "Rinus Michels & Johan Cruyff", explanation: "Michels developed the theory, and Cruyff executed it on the pitch." },
+      { id: 82, q: "What is the core concept of Pitch Geometry in Total Football?", options: ["Maintain a rigid shape", "Expand space when attacking, contract when defending", "Play wide at all times", "Focus on counter-attacks"], correct: "Expand space when attacking, contract when defending", explanation: "Making the pitch big in possession and small out of possession." },
+      { id: 83, q: "What is 'Positional Interchange'?", options: ["Substitutions", "Players rotating roles to cover vacated space", "Switching wings", "Changing formation mid-game"], correct: "Players rotating roles to cover vacated space", explanation: "If a player leaves their zone, another must instantly fill it." },
+      { id: 84, q: "What does the 'Sweeper Keeper' provide in build-up?", options: ["Defensive cover", "A numerical advantage (11th outfield player)", "Long clearances", "Shot stopping"], correct: "A numerical advantage (11th outfield player)", explanation: "Using the keeper as a passer creates an overload against the press." },
+      { id: 85, q: "What defines a 'Third Man Run' in elite tactical geometry?", options: ["An untracked run into space while two others exchange passes", "An overlapping run by a full-back to deliver a cross", "A decoy run made by a striker to drag a centre-back away", "A defensive recovery run to stop a counter-attack"], correct: "An untracked run into space while two others exchange passes", explanation: "As Player A passes to Player B, Player C (the Third Man) exploits the distracted defence by making an untracked run into open space." },
+      { id: 86, q: "What formation is the foundation of Total Football possession?", options: ["4-4-2", "4-3-3", "3-5-2", "5-4-1"], correct: "4-3-3", explanation: "The 4-3-3 creates the natural triangles needed for the system." },
+      { id: 87, q: "What is the benefit of 'Infinite Triangles'?", options: ["Aesthetic appeal", "The ball carrier always has at least two passing options", "Defensive solidity", "Faster counter-attacks"], correct: "The ball carrier always has at least two passing options", explanation: "Triangles ensure support angles for the player in possession." },
+      { id: 88, q: "Which modern manager evolved Cruyff's ideas into 'Juego de Posición'?", options: ["Jurgen Klopp", "Pep Guardiola", "Mikel Arteta", "Xabi Alonso"], correct: "Pep Guardiola", explanation: "Guardiola adapted Total Football into modern Positional Play." },
+      { id: 89, q: "What is the 'Clockwork' requirement?", options: ["High fitness", "Absolute tactical precision in rotation", "Fast passing", " Disciplined defending"], correct: "Absolute tactical precision in rotation", explanation: "Rotations must be timed perfectly to maintain defensive structure." },
+      { id: 90, q: "What defines a 'Technical Centre-Back' in this system?", options: ["Physical strength", "Playmaking ability from the back", "Heading ability", "Man-marking skill"], correct: "Playmaking ability from the back", explanation: "Defenders must be able to initiate attacks with passing." },
+      { id: 91, q: "What is the goal of 'Contracting Space'?", options: ["To rest", "To deny the opponent room to play", "To force long balls", "To protect the lead"], correct: "To deny the opponent room to play", explanation: "Shrinking the playing area makes it harder for opponents to pass." },
+      { id: 92, q: "According to the Academy dossier records, which two players are officially highlighted as the 'System Pioneers' of the modern Sweeper Keeper role?", options: ["Manuel Neuer & Ederson", "Manuel Neuer & Alisson Becker", "Ederson & Thibaut Courtois", "Gianluigi Buffon & Iker Casillas"], correct: "Manuel Neuer & Ederson", explanation: "While many modern goalkeepers play out from the back, the dossier specifically highlights Manuel Neuer and Ederson as the pioneers who normalized the keeper acting as an 11th outfield playmaker." },
+      { id: 93, q: "Which club is the birthplace of Total Football?", options: ["Barcelona", "Ajax", "Bayern Munich", "AC Milan"], correct: "Ajax", explanation: "Ajax Amsterdam is where Rinus Michels developed the system." },
+      { id: 94, q: "Finish Johan Cruyff's legendary quote: 'Football is a game you play with your...'", options: ["Brain", "Feet", "Heart", "Teammates"], correct: "Brain", explanation: "Cruyff's philosophy was that physical and technical skill are completely useless without the elite tactical intelligence to manage space and timing." },
+      { id: 95, q: "What does 'Juego de Posición' mean?", options: ["Positional Play", "The Beautiful Game", "Total Attack", "Possession Football"], correct: "Positional Play", explanation: "The Spanish term for the structured possession game." },
+      { id: 96, q: "Under the rules of Positional Interchange, what MUST happen if a defender pushes forward into the attack?", options: ["A midfielder must drop to cover the vacated space", "The winger on that side must immediately drop into the defensive line", "The goalkeeper must step out of the penalty box to act as a temporary centre-back", "The team must instantly transition into a rigid 5-4-1 Low Block"], correct: "A midfielder must drop to cover the vacated space", explanation: "Total Football requires clockwork precision. If one player vacates their zone, another must immediately rotate in to maintain the team's structural shape." },
+      { id: 97, q: "How does the 4-3-3 aid possession?", options: ["It naturally spaces players into 'Infinite Triangles', ensuring multiple passing options", "It inherently creates a 'Box Midfield' to overload the central channels", "It forces the wingers to drop deep and form a five-man defensive line", "It allows for two traditional centre-forwards to pin the opposing centre-backs"], correct: "It naturally spaces players into 'Infinite Triangles', ensuring multiple passing options", explanation: "The natural staggered geometry of the 4-3-3 organically creates passing triangles all over the pitch, allowing the team to dominate possession safely." },
+      { id: 98, q: "While a Sweeper Keeper provides a numerical advantage in possession, what is their primary tactical function when the team is defending?", options: ["To sweep up long balls played into the 'Green Ocean', allowing the defence to safely push a High Line", "To drop onto the goal line and prepare for incoming cross-field aerial bombardments", "To temporarily drop into the defensive line to act as a third centre-back against wide crosses", "To physically man-mark the opponent's 'High Outlet' player during transition moments"], correct: "To sweep up long balls played into the 'Green Ocean', allowing the defence to safely push a High Line", explanation: "By sweeping up the space behind the defence, the keeper neutralizes the threat of long balls, which gives the centre-backs the confidence to push their High Line up to the halfway mark." },
+      { id: 99, q: "According to Johan Cruyff's philosophy on Total Football, why is purely possessing elite 'technical skill' considered insufficient?", options: ["Because technical skill is useless without the tactical intelligence to manage space and timing", "Because modern football requires an 'Elite Engine' to cover maximum distance for 90 minutes", "Because technical players are too easily physically bullied by a rigid Low Block", "Because highly technical teams are inherently vulnerable to rapid, vertical counter-attacks"], correct: "Because technical skill is useless without the tactical intelligence to manage space and timing", explanation: "Cruyff famously stated that 'Football is a game you play with your Brain.' Physical and technical abilities are secondary to a player's spatial awareness and tactical decision-making." },
+      { id: 100, q: "Total Football prioritizes what over physical strength?", options: ["Speed", "Technical intelligence and space", "Agility", "Stamina"], correct: "Technical intelligence and space", explanation: "Understanding space is the primary attribute of a Total Footballer." }
+    ]
+  },
+
+ mod4: {
+    title: "Business Mogul",
+    questions: [
+      // --- TOPIC 1: THE MARKET (1-20) ---
+      { id: 1, q: "In the transfer market, what are clubs legally purchasing?", options: ["The player's human rights", "The exclusive legal right to register the player", "The player's image rights only", "The player's sponsorship deals"], correct: "The exclusive legal right to register the player", explanation: "You aren't buying a human; you are buying the exclusive legal right to register that player." },
+      { id: 2, q: "MOGUL DILEMMA: Why do Elite Directors avoid the Winter Window (January) whenever possible?", options: ["Players cost 20-30% more and lack tactical integration time", "The UEFA financial reporting deadline prevents large amortisation hits mid-season", "Players signed in January are cup-tied and ineligible for domestic league matches", "Clubs are restricted to signing a maximum of two players during the winter period"], correct: "Players cost 20-30% more and lack tactical integration time", explanation: "Buying in winter incurs a 'Panic Premium', and new signings skip the crucial pre-season tactical integration." },
+      { id: 3, q: "What specific risk does a January signing face regarding 'Adaptation'?", options: ["They skip pre-season and must learn complex tactics under extreme pressure", "They automatically trigger the 'English Tax' if registered after December 31st", "They are forced to accept lower baseline wages due to mid-season budget constraints", "They forfeit their right to a signing bonus under FIFA TMS regulations"], correct: "They skip pre-season and must learn complex tactics under extreme pressure", explanation: "Without a pre-season to learn the manager's 'automations', players are thrown into high-intensity games immediately, which often leads to system failure." },
+      { id: 4, q: "According to the World Record timeline, how often do transfer records typically double?", options: ["Every 2 years", "Every 5 years", "Every 8-10 years", "Every 20 years"], correct: "Every 8-10 years", explanation: "Driven by TV revenue increases, the record fee doubles roughly every decade." },
+      { id: 5, q: "Who was the first £1m transfer (1979)?", options: ["Alan Shearer", "Trevor Francis", "Diego Maradona", "Johan Cruyff"], correct: "Trevor Francis", explanation: "Trevor Francis broke the £1m barrier in 1979." },
+      { id: 6, q: "MOGUL MATH: Utilizing the standard formula, a 'Free Transfer' player demanding £400,000 per week on a 4-year contract will cost approximately how much in total cash flow?", options: ["£83,200,000", "£19,200,000", "£48,000,000", "£104,000,000"], correct: "£83,200,000", explanation: "Wages > Fees. The formula is: (£400k x 52 weeks) x 4 years = £83.2m total package cost." },
+      { id: 7, q: "What is 'Mogul Rule #1' regarding Deadline Day?", options: ["Always wait for the best price", "Never leave business until the final hour", "Use a fax machine for security", "Call the Premier League directly"], correct: "Never leave business until the final hour", explanation: "Technical failures (internet/fax) in the final hour can cost you a £50m asset. Deal early." },
+      { id: 8, q: "Why is a player's medical exam strictly considered an 'Asset Valuation' by the boardroom?", options: ["A chronic issue drops the digital registration asset value to zero", "It allows the buying club to artificially lower the player's weekly wage structure", "It is legally required by UEFA to bypass the strict Squad Quota limits", "It legally transfers the player's image rights to the club's medical sponsor"], correct: "A chronic issue drops the digital registration asset value to zero", explanation: "The medical is an insurance policy. A chronic issue (like a degenerative knee) makes the digital registration asset worthless on the market." },
+      { id: 9, q: "What happens if paperwork is uploaded to FIFA TMS one second after the deadline?", options: ["You pay a fine", "You get a 1-hour extension", "The deal is void", "It goes to a tribunal"], correct: "The deal is void", explanation: "The FIFA TMS system locks instantly. Miss it by a second, and the deal is dead." },
+      { id: 10, q: "Which transfer window is strictly utilized by elite Sporting Directors for long-term 'Strategy'?", options: ["The Summer Window (July–August)", "The Winter Window (January)", "The Financial Year-End (June)", "The Pre-Contract Window (March)"], correct: "The Summer Window (July–August)", explanation: "The Summer Window (July-August) is for strategy; the Winter Window (January) is for panic." },
+      { id: 11, q: "When evaluating a potential transfer, what do elite 'Moguls' analyze instead of just the headline transfer fee?", options: ["The 'Total Package', factoring in weekly wages, contract length, and agent fees", "The immediate amortisation hit recorded on the balance sheet for the current fiscal year", "The player's projected resale value minus the selling club's mandated 20% sell-on clause", "The exact ratio of the transfer fee against the club's available SCR 'Buffer Zone' allowance"], correct: "The 'Total Package', factoring in weekly wages, contract length, and agent fees", explanation: "Amateurs look at the transfer fee. Moguls look at the 'Total Package'—wages, agent fees, and amortisation over the length of the contract." },
+      { id: 12, q: "How much did Real Madrid pay for Cristiano Ronaldo in 2009?", options: ["£50m", "£80m", "£100m", "£120m"], correct: "£80m", explanation: "Ronaldo's world record fee in 2009 was £80m." },
+      { id: 13, q: "Who set the world record at £15m in 1996?", options: ["Ronaldo", "Alan Shearer", "Zinedine Zidane", "Eric Cantona"], correct: "Alan Shearer", explanation: "Alan Shearer set the world record at £15m in 1996." },
+      { id: 14, q: "Who holds the current world record at £198m (2017)?", options: ["Kylian Mbappé", "Neymar", "Paul Pogba", "Harry Kane"], correct: "Neymar", explanation: "Neymar's move to PSG set the record at £198m." },
+      { id: 15, q: "What percentage fee can 'Super-agents' demand to facilitate a deal?", options: ["1-2%", "3-5%", "10-20%", "50%"], correct: "10-20%", explanation: "Super-agents can demand 10-20% of the deal value." },
+      { id: 16, q: "What does 'FIFA TMS' stand for?", options: ["Transfer Market System", "Transfer Matching System", "Total Money System", "Team Management Software"], correct: "Transfer Matching System", explanation: "The Transfer Matching System is the digital platform used to register deals." },
+      { id: 17, q: "Registration rights are tracked as what type of asset?", options: ["Physical", "Digital", "Liquid", "Fixed"], correct: "Digital", explanation: "The registration is a digital asset tracked by FIFA." },
+      { id: 18, q: "Which global football organization is officially in charge of operating the Transfer Matching System (TMS)?", options: ["FIFA", "UEFA", "The English FA (Football Association)", "The Court of Arbitration for Sport (CAS)"], correct: "FIFA", explanation: "The TMS is a global digital platform operated strictly by FIFA to track, verify, and clear cross-border international transfers." },
+      { id: 19, q: "According to the 'Mogul Formula', what are the three mathematical components required to calculate the true 'Total Package' cost of a player's wages?", options: ["(Weekly Wage × 52 Weeks) × Contract Years", "(Monthly Wage × 12 Months) + Estimated Agent Fees", "(Weekly Wage × 38 Games) × Remaining Contract Length", "(Annual Salary ÷ 5 Years) + Initial Transfer Fee"], correct: "(Weekly Wage × 52 Weeks) × Contract Years", explanation: "To calculate the true cash flow impact of a contract, Moguls look at the entire calendar year: (Weekly Wage × 52 Weeks) × Contract Years." },
+      { id: 20, q: "Why do elite clubs adhere to 'Mogul Rule #1' and avoid leaving transfer business until the final hours of Deadline Day?", options: ["Technical failures, such as slow internet or fax machine errors, can cause paperwork to miss the midnight FIFA TMS deadline", "UEFA actively downgrades the asset valuation of any player registered in the final 24 hours of the window", "Selling clubs are legally required to add a 15% surcharge to any deal completed on the final day", "Players signed on Deadline Day are automatically ineligible to play in the next round of domestic fixtures"], correct: "Technical failures, such as slow internet or fax machine errors, can cause paperwork to miss the midnight FIFA TMS deadline", explanation: "Never leave business until the final hour. A fax machine error or a slow internet connection can cost you a £50m asset if you miss the midnight TMS deadline by even one second." },
+
+      // --- TOPIC 2: TAKEOVERS (21-40) ---
+      { id: 21, q: "Which owner fundamentally changed European football in 2003 by injecting personal wealth to bypass organic growth limits, sparking the 'Financial Doping' era?", options: ["Jack Walker", "Roman Abramovich", "Sheikh Mansour", "The Glazers"], correct: "Roman Abramovich", explanation: "Abramovich changed the game by injecting unprecedented personal wealth to bypass organic growth, completely altering the financial landscape of European football." },
+      { id: 22, q: "Which of these is a 'State Project' backed by a Sovereign Wealth Fund?", options: ["Manchester United", "Liverpool", "Man City", "Arsenal"], correct: "Man City", explanation: "Man City, PSG, and Newcastle are backed by nation-states (UAE, Qatar, Saudi Arabia)." },
+      { id: 23, q: "What is the primary geopolitical goal of a 'State Project' engaging in 'Sportswashing'?", options: ["Cleaning a nation's global reputation on the world stage to generate 'Soft Power'", "Maximizing annual operating profit through global merchandise sales and asset flipping", "Establishing a monopoly on domestic television broadcasting rights", "Bypassing UEFA's strict Squad Cost Ratio (SCR) limitations"], correct: "Cleaning a nation's global reputation on the world stage to generate 'Soft Power'", explanation: "The primary goal isn't necessarily annual operating profit. It is Soft Power, using the global popularity of elite football to normalize and improve the public image of their respective nations." },
+      { id: 24, q: "What is the 'Ambition Trap'?", options: ["Billionaires spending aggressively to catch the elite, but lacking State-level funds to absorb the FFP penalties", "Promoted teams overspending on wages in their first season and facing immediate relegation", "Selling a star player without having a direct replacement identified in the scouting network", "Focusing entirely on Champions League progression at the expense of domestic league survival"], correct: "Billionaires spending aggressively to catch the elite, but lacking State-level funds to absorb the FFP penalties", explanation: "Owners like those at Everton or Villa spend big to catch the elite but risk hitting FFP walls because they lack the infinite capital of sovereign wealth funds." },
+      { id: 25, q: "What is the primary operational advantage of the Multi-Club Ownership (MCO) model utilized by groups like CFG?", options: ["Bypassing work permits, sharing global scouting data, and moving player assets freely between sister clubs", "Merging the financial revenues of all clubs to artificially inflate a single club's PSR limit", "Allowing a single manager to dictate the tactical systems of multiple teams simultaneously", "Forcing rival clubs to pay a premium when negotiating transfers within the same domestic league"], correct: "Bypassing work permits, sharing global scouting data, and moving player assets freely between sister clubs", explanation: "Groups like CFG can move players between sister clubs to bypass regulations, share vast scouting networks, and develop talent internally across the globe." },
+      { id: 26, q: "What is the 'Gatekeeper' test for new owners called?", options: ["The Owners' & Directors' Test", "The Sovereign Wealth Vetting Protocol", "The UEFA Capital Compliance Check", "The Independent Regulator Assessment"], correct: "The Owners' & Directors' Test", explanation: "Commonly known as the 'Fit & Proper Person Test', it is officially called the Owners' & Directors' Test." },
+      { id: 27, q: "Why is it virtually impossible for an individual billionaire to financially compete with a 'State Project'?", options: ["Because no single billionaire's private wealth can compete with the Gross Domestic Product (GDP) of an oil-rich nation", "Because individual owners are strictly prohibited by UEFA from utilizing the Multi-Club Ownership (MCO) model", "Because Sovereign Wealth Funds are legally exempt from the Premier League's Profit & Sustainability Rules", "Because individual investors are not allowed to inject personal cash directly into stadium infrastructure"], correct: "Because no single billionaire's private wealth can compete with the Gross Domestic Product (GDP) of an oil-rich nation", explanation: "Owned effectively by nation-states (UAE, Saudi Arabia, Qatar), these clubs operate with virtually unlimited capital. No individual can compete with a nation's GDP." },
+      { id: 28, q: "Which takeover was delayed by over a year due to human rights concerns?", options: ["Chelsea", "Newcastle United", "Man City", "Man Utd"], correct: "Newcastle United", explanation: "The Saudi PIF takeover of Newcastle faced a long delay due to the 'Fit & Proper' test." },
+      { id: 29, q: "According to the Academy dossiers, which two specific competitions are primarily targeted by 'State Projects' as platforms to generate Soft Power and execute 'Sportswashing'?", options: ["The Premier League and the UEFA Champions League", "The Premier League and the FIFA World Cup", "The UEFA Champions League and the UEFA European Championship", "The Premier League and the FA Cup"], correct: "The Premier League and the UEFA Champions League", explanation: "State Projects utilize the massive, weekly global popularity of the Premier League and Champions League to normalize and improve their nation's public image on the world stage." },
+      { id: 30, q: "The Red Bull model is described as what?", options: ["A retirement home", "A factory line of talent", "A marketing gimmick", "A defensive system"], correct: "A factory line of talent", explanation: "Players move from Salzburg to Leipzig in a structured development pipeline." },
+      { id: 31, q: "Who owned Blackburn Rovers during their 1995 title win?", options: ["Roman Abramovich", "Jack Walker", "Mike Ashley", "The Walker Brothers"], correct: "Jack Walker", explanation: "Jack Walker was the local steel magnate who funded Blackburn." },
+      { id: 29, q: "According to the Academy dossiers, which two specific competitions are primarily targeted by 'State Projects' as platforms to generate Soft Power and execute 'Sportswashing'?", options: ["The Premier League and the UEFA Champions League", "The Premier League and the FIFA World Cup", "The UEFA Champions League and the UEFA European Championship", "The Premier League and the FA Cup"], correct: "The Premier League and the UEFA Champions League", explanation: "State Projects utilize the massive, weekly global popularity of the Premier League and Champions League to normalize and improve their nation's public image on the world stage." },
+      { id: 33, q: "According to the 'Ambition Trap' concept, which of the following clubs is cited as having billionaire owners who spend aggressively to catch the 'Big 6' but risk hitting PSR walls because they lack state-level wealth?", options: ["Aston Villa", "Tottenham Hotspur", "Sunderland AFC", "Brighton & Hove Albion"], correct: "Aston Villa", explanation: "Clubs like Everton and Aston Villa fall into the Ambition Trap; they have incredibly wealthy owners who want to compete, but their private wealth cannot absorb FFP/PSR penalties like a Sovereign Wealth Fund can." },
+      { id: 34, q: "What does 'CFG' stand for?", options: ["City Football Group", "Central Football Governance", "Chelsea Football Group", "Club Financial Group"], correct: "City Football Group", explanation: "CFG owns a network of clubs including Man City and Girona." },
+      { id: 35, q: "Which Spanish club is part of the CFG network?", options: ["RB Leipzig", "Girona", "Nice", "Strasbourg"], correct: "Girona", explanation: "Girona is part of the CFG network." },
+      { id: 36, q: "In the Red Bull pipeline, players move from Salzburg to where?", options: ["New York", "RB Leipzig", "Munich", "Vienna"], correct: "RB Leipzig", explanation: "Players develop at Salzburg and move to Leipzig." },
+      { id: 37, q: "What does the Owners' Test vet?", options: ["The exact origin of the capital and any associated geopolitical or human rights issues", "The new owner's strategic 5-year business plan for stadium expansion", "The club's existing debt-to-revenue ratio under current UEFA guidelines", "The historical multi-club ownership (MCO) portfolio of the incoming investor"], correct: "The exact origin of the capital and any associated geopolitical or human rights issues", explanation: "The test acts as a gatekeeper to vet the source of funds and any potential human rights issues before allowing a takeover." },
+      { id: 38, q: "Who represents the 'Local Dream' era of ownership?", options: ["Roman Abramovich", "Jack Walker", "Sheikh Mansour", "Stan Kroenke"], correct: "Jack Walker", explanation: "Jack Walker represents the Local Dream era." },
+      { id: 39, q: "Who represents the 'Oligarch' era?", options: ["Jack Walker", "Roman Abramovich", "The Glazers", "FSG"], correct: "Roman Abramovich", explanation: "Roman Abramovich represents the Oligarch era." },
+      { id: 40, q: "According to the Academy dossiers, what is the primary, ultimate goal of US Private Equity firms when taking over an elite football club?", options: ["Strict Return on Investment (ROI) by massively increasing commercial revenue and eventually selling the franchise for a profit", "Generating 'Soft Power' and improving the global geopolitical image of their domestic investors", "Protecting the '50+1 Rule' to ensure local fans retain majority voting rights over boardroom decisions", "Establishing a massive Multi-Club Ownership (MCO) network solely to bypass international work permit regulations"], correct: "Strict Return on Investment (ROI) by massively increasing commercial revenue and eventually selling the franchise for a profit", explanation: "Unlike State Projects looking for Soft Power, American private equity firms treat football clubs like massive corporate assets. Their end game is to grow the brand's valuation and 'flip' the asset for billions more than they paid for it." },
+
+      // --- TOPIC 3: FFP & PSR (41-60) ---
+      { id: 41, q: "What is the Premier League's 'Golden Number' for PSR loss limits?", options: ["£50m", "£105m", "£200m", "£0"], correct: "£105m", explanation: "Clubs cannot lose more than £105m over a rolling 3-year period." },
+      { id: 42, q: "SCENARIO: It is June 29th. You are £30m over the loss limit. You have two offers. Who MUST you sell?", options: ["Star Player (Book Value £50m, Offer £60m)", "Academy Graduate (Book Value £0, Offer £35m)", "Squad Player (Book Value £10m, Offer £10m)", "Keep everyone"], correct: "Academy Graduate (Book Value £0, Offer £35m)", explanation: "Selling the Star gives only £10m profit (£60m-£50m). Selling the Academy kid gives £35m Pure Profit, saving the club." },
+      { id: 43, q: "Why is selling an Academy player described as 'Pure Profit'?", options: ["Their 'Book Cost' is £0, so the entire fee counts as immediate accounting profit", "Because Academy players are legally exempt from agent facilitation fees under UEFA regulations", "Because their transfer fees are not subject to standard corporate tax rates in the Premier League", "Because selling a homegrown player automatically grants a £10m PSR buffer bonus"], correct: "Their 'Book Cost' is £0, so the entire fee counts as immediate accounting profit", explanation: "Since they cost nothing to buy, every penny of the sale counts as immediate accounting profit." },
+      { id: 44, q: "What is the core allegation in the Man City '115' case?", options: ["Match fixing", "Disguised Investment (inflating sponsorship)", "Illegal approach for players", "Not paying staff"], correct: "Disguised Investment (inflating sponsorship)", explanation: "Allegations involve inflating sponsorship revenue to hide direct owner investment." },
+      { id: 45, q: "Which clubs suffered points deductions in 2024 for PSR breaches?", options: ["Chelsea & Man City", "Everton & Nottingham Forest", "Leicester & Leeds", "Sheffield Utd & Luton"], correct: "Everton & Nottingham Forest", explanation: "Everton and Nottingham Forest were punished for breaching the £105m limit." },
+      { id: 46, q: "Under the upcoming Squad Cost Ratio (SCR) rules, what exact percentage of revenue represents the 'Red Threshold' that clubs cannot exceed without facing immediate sporting sanctions?", options: ["115%", "85%", "100%", "105%"], correct: "115%", explanation: "Spending over 115% of revenue triggers immediate sporting sanctions." },
+      { id: 47, q: "What is the penalty for breaching the SCR Red Threshold?", options: ["A fine", "Automatic 6-point deduction + multipliers", "Transfer ban", "Relegation"], correct: "Automatic 6-point deduction + multipliers", explanation: "It is a fixed 6-point deduction plus extra points for the amount overspent." },
+      { id: 48, q: "What is the 'Feedback Loop' in the new SCR rules?", options: ["If you use the Buffer in Year 1, you lose it for Year 2 until you are compliant again", "A mechanism requiring clubs to reinvest 20% of all transfer profits directly back into their academy", "An automatic wage cap that activates if a club's debt-to-revenue ratio exceeds UEFA guidelines", "The mandatory process of submitting quarterly financial reports to the independent regulator for approval"], correct: "If you use the Buffer in Year 1, you lose it for Year 2 until you are compliant again", explanation: "You cannot overspend every year; using the buffer reduces your allowance for the next season." },
+      { id: 49, q: "Why did Newcastle United sell promising young players like Elliot Anderson and Yankuba Minteh in June 2024?", options: ["To generate immediate Pure Profit and pass PSR before the June 30th financial deadline", "To clear roster space to comply with the Premier League's strict 25-man squad limit", "To fund the immediate activation of a rival star player's massive release clause", "Because both players formally submitted transfer requests to force moves to Champions League clubs"], correct: "To generate immediate Pure Profit and pass PSR before the June 30th financial deadline", explanation: "They needed immediate accounting profit before the June 30 deadline." },
+      { id: 50, q: "If you buy a player for £50m and sell him for £50m, what is the accounting profit?", options: ["£50m", "£0", "£25m", "£100m"], correct: "£0", explanation: "Sales Price (£50m) - Book Cost (£50m) = £0 Profit. It doesn't help FFP." },
+      { id: 51, q: "Under the new Squad Cost Ratio (SCR) rules, what does the 'Green Threshold' (85%) represent?", options: ["The baseline limit clubs can spend on wages, transfers, and agent fees without utilizing their buffer", "The minimum percentage of revenue a club is legally required to spend on stadium infrastructure", "The maximum percentage of matchday broadcast revenue that can be allocated to squad salaries", "The threshold at which a club is granted an automatic exemption from UEFA's Financial Fair Play checks"], correct: "The baseline limit clubs can spend on wages, transfers, and agent fees without utilizing their buffer", explanation: "Clubs can spend up to 85% of their revenue on wages, transfers, and agent fees. Spending beyond this dips into the heavily penalized buffer and red zones." },
+      { id: 52, q: "What is the penalty for spending in the 'Buffer Zone' (85-115%)?", options: ["Points Deduction", "Financial Levy (Fine)", "Relegation", "Warning"], correct: "Financial Levy (Fine)", explanation: "Spending in the buffer zone results in a Financial Levy." },
+      { id: 53, q: "Over what specific operational timeframe does the Premier League calculate a club's £105m Profit & Sustainability (PSR) limit?", options: ["A rolling 3-year period", "A single 12-month financial fiscal year", "A rolling 5-year UEFA coefficient period", "The exact duration of the current manager's contract"], correct: "A rolling 3-year period", explanation: "PSR is not judged on a single bad season. Clubs cannot lose more than £105m over a rolling 3-year accounting period." },
+      { id: 54, q: "The SCR multiplier adds 1 point deduction for every ____ overspent?", options: ["£1m", "£6.5m", "£10m", "£5m"], correct: "£6.5m", explanation: "+1 additional Point Deduction for every £6.5m overspent." },
+      { id: 55, q: "When are the sporting sanctions (such as points deductions) for an SCR Red Threshold breach officially applied?", options: ["In the exact same season the financial breach occurred", "At the start of the following competitive season", "Only after a mandatory 2-year independent appeals process", "They are suspended indefinitely if the club qualifies for European competition"], correct: "In the exact same season the financial breach occurred", explanation: "The new SCR rules are designed for immediate enforcement. Sanctions are imposed in the very same season the breach occurs to maintain sporting integrity." },
+      { id: 56, q: "Which Newcastle player was sold to Brighton to pass PSR?", options: ["Elliot Anderson", "Yankuba Minteh", "Anthony Gordon", "Bruno Guimaraes"], correct: "Yankuba Minteh", explanation: "Yankuba Minteh was sold to Brighton." },
+      { id: 57, q: "Which Newcastle player was sold to Forest to pass PSR?", options: ["Sean Longstaff", "Elliot Anderson", "Lewis Miley", "Dan Burn"], correct: "Elliot Anderson", explanation: "Elliot Anderson was sold to Nottingham Forest." },
+      { id: 58, q: "According to the 'Trial of the Century' dossier, the 115 financial charges brought against Manchester City span across which specific era?", options: ["2009 to 2018", "1992 to 2003", "2016 to 2024", "2000 to 2010"], correct: "2009 to 2018", explanation: "The unprecedented scale of the Premier League's allegations covers a massive nine-year window from 2009 to 2018." },
+      { id: 59, q: "In which upcoming season is the Premier League officially scheduled to transition away from the current PSR framework and fully implement the new Squad Cost Ratio (SCR) rules?", options: ["The 2026/27 season", "The 2024/25 season", "The 2030/31 season", "The transition has been permanently cancelled by the independent regulator"], correct: "The 2026/27 season", explanation: "The league is giving clubs a grace period to adjust their wage bills and amortisation schedules before SCR becomes the ultimate law in 26/27." },
+      { id: 60, q: "From the 2026/27 season, which specific financial regulatory framework is the new Squad Cost Ratio (SCR) officially replacing in the Premier League?", options: ["Profit & Sustainability Rules (PSR)", "Financial Fair Play (FFP)", "Player Amortisation Limits", "The 25-Man Squad Quotas"], correct: "Profit & Sustainability Rules (PSR)", explanation: "While 'FFP' is the general European media term, the Premier League currently operates strictly under PSR. From 2026/27, PSR is officially replaced by the new SCR rules." },
+
+      // --- TOPIC 4: AMORTISATION (61-80) ---
+      { id: 61, q: "What is 'Amortisation'?", options: ["Paying a fee all at once", "Spreading the transfer fee evenly over the contract length", "A type of loan", "A tax avoidance scheme"], correct: "Spreading the transfer fee evenly over the contract length", explanation: "Accounting rules allow clubs to spread the cost over the years of the contract." },
+      { id: 62, q: "SCENARIO: You sign a player for £100m on a 5-year deal. What is the annual cost on the books?", options: ["£100m", "£20m", "£50m", "£10m"], correct: "£20m", explanation: "£100m divided by 5 years = £20m per year." },
+      { id: 63, q: "What was the 'Chelsea Loophole'?", options: ["Signing players to 8-year contracts to lower the annual amortisation cost", "Registering new signings under an affiliated sister club to completely bypass PSR limits", "Delaying the payment of massive transfer fees until the following financial fiscal year", "Classifying massive signing bonuses as commercial expenses rather than sporting costs"], correct: "Signing players to 8-year contracts to lower the annual amortisation cost", explanation: "By using 8-year deals, Chelsea drastically reduced their annual amortisation charge." },
+      { id: 64, q: "SCENARIO: A player bought for £60m (5 years) flops. After 2 years, you sell him for £20m. What is the result?", options: ["£20m Profit", "Break Even", "£16m Accounting LOSS", "£40m Loss"], correct: "£16m Accounting LOSS", explanation: "Book Value after 2 years is £36m. Selling for £20m means a £16m loss (£20m - £36m)." },
+      { id: 65, q: "What is 'Negative Equity' in football?", options: ["When a player's actual Market Value drops significantly below their current Book Value", "When a club's total annual wage bill exceeds their combined commercial and broadcast revenue", "When the remaining installments owed to the selling club are greater than the player's release clause", "When the outstanding transfer installments owed to rival clubs exceed the team's available liquid cash reserves"], correct: "When a player's actual Market Value drops significantly below their current Book Value", explanation: "This traps the club: they cannot sell the player without realizing a financial loss." },
+      { id: 66, q: "Why was the Philippe Coutinho sale to Barcelona considered a 'Masterclass'?", options: ["Barcelona overpaid", "His Book Value was near zero, creating massive Pure Profit", "He was an academy player", "Because his image rights were retained by Liverpool post-sale"], correct: "His Book Value was near zero, creating massive Pure Profit", explanation: "Liverpool bought him cheap (£8.5m). Years later, his book value was £0, so the £142m fee was almost entirely profit." },
+      { id: 67, q: "What defines the 'Wage Trap'?", options: ["Paying players too little", "Being forced to keep deadwood players to avoid realizing an accounting loss", "Players demanding bonuses", "The salary cap"], correct: "Being forced to keep deadwood players to avoid realizing an accounting loss", explanation: "Clubs keep deadwood to avoid realizing the accounting loss." },
+      { id: 68, q: "If you extend a player's contract, what happens to the annual amortisation cost?", options: ["It increases", "It decreases", "It stays the same", "It doubles"], correct: "It decreases", explanation: "You spread the remaining value over more years, lowering the annual hit." },
+      { id: 69, q: "What rule change did UEFA introduce in 2024 regarding contracts?", options: ["No limit on length", "Amortisation capped at 5 years maximum", "Contracts max 3 years", "Amortisation banned"], correct: "Amortisation capped at 5 years maximum", explanation: "You can sign an 8-year deal, but you must spread the cost over only 5 years." },
+      { id: 70, q: "If a £100m player (5-year deal) leaves for free after 5 years, what is the accounting loss?", options: ["£100m", "£20m", "£0", "£50m"], correct: "£0", explanation: "His book value has fully amortised to zero. It is bad business, but not an accounting loss." },
+      { id: 71, q: "According to the 'Chelsea Loophole' case study, approximately how much did the club manage to spend on transfer fees while initially remaining compliant with financial rules?", options: ["£1 billion", "£800 million", "£1.5 billion", "£2 billion"], correct: "£1 billion", explanation: "By utilizing 8-year contracts to spread out the amortisation hits, Chelsea managed to spend an unprecedented £1bn on new talent." },
+      { id: 72, q: "When Liverpool originally signed Philippe Coutinho, making the initial investment that would eventually fund their Champions League-winning squad, what was his approximate transfer fee?", options: ["£8.5m", "£20m", "£35m", "£2.5m"], correct: "£8.5m", explanation: "Liverpool bought Coutinho for just £8.5m. Because the initial fee was so low, his Book Value dropped to near zero very quickly." },
+      { id: 73, q: "When Barcelona purchased Philippe Coutinho from Liverpool in 2018, what was the massive headline transfer fee that registered as almost entirely 'Pure Profit'?", options: ["£142m", "£105m", "£198m", "£80m"], correct: "£142m", explanation: "Barcelona paid £142m. Because Coutinho's Book Value was essentially £0 at the time, this massive fee was an incredible accounting windfall for Liverpool." },
+      { id: 74, q: "Who did Liverpool buy with the Coutinho money?", options: ["Salah & Mane", "Virgil van Dijk & Alisson Becker", "Fabinho & Keita", "Suarez & Carroll"], correct: "Virgil van Dijk & Alisson Becker", explanation: "The Coutinho sale funded VVD and Alisson." },
+      { id: 75, q: "MOGUL MATH: By exploiting the 'Chelsea Loophole' and signing a £100m player to an 8-year contract, what exact annual amortisation cost was recorded on the club's balance sheet?", options: ["£12.5m", "£20m", "£8m", "£100m"], correct: "£12.5m", explanation: "Instead of dividing £100m by 5 years (£20m/year), Chelsea divided it by 8 years, meaning a £100m player only cost them £12.5m per year on the books." },
+      { id: 76, q: "Under standard amortisation accounting, what happens to a player's 'Book Value' over the duration of their contract?", options: ["It decreases steadily each year until it reaches zero at the end of the contract", "It fluctuates up and down based on their performances and goals scored", "It remains permanently fixed at the original purchase price until the player is sold", "It increases annually in line with the Premier League's inflation index"], correct: "It decreases steadily each year until it reaches zero at the end of the contract", explanation: "Amortisation spreads the cost evenly. A £100m player on a 5-year deal loses £20m in 'Book Value' every single year until they are worth £0 on the books." },
+      { id: 77, q: "What specific risk does 'Negative Equity' pose during a transfer negotiation?", options: ["The player becomes unsellable because any fee below book value triggers a PSR accounting loss", "The player's image rights automatically revert to the original selling club", "The player is ineligible for European competition until the book value hit is paid", "The agent is prohibited from taking a fee until the asset is in the green"], correct: "The player becomes unsellable because any fee below book value triggers a PSR accounting loss", explanation: "Negative equity traps clubs; they must choose between keeping a non-performing player or taking a damaging financial hit on the books." },
+      { id: 78, q: "In the context of the 'Negative Equity' scenario, what is the critical difference between a player's 'Book Value' and their 'Market Value'?", options: ["Book Value is a guaranteed accounting figure based on the amortised fee, while Market Value is simply what another club is currently willing to pay", "Book Value dictates the player's weekly wage limit, while Market Value dictates their official release clause", "Book Value is set by FIFA's TMS system, while Market Value is negotiated entirely by super-agents", "Book Value includes the agent's commission and signing bonus, while Market Value only includes the base transfer fee"], correct: "Book Value is a guaranteed accounting figure based on the amortised fee, while Market Value is simply what another club is currently willing to pay", explanation: "A player might have a guaranteed Book Value of £36m on your accounting ledgers, but if they are a 'flop', their actual Market Value (what someone will pay you for them) might crash to £20m." },
+      { id: 79, q: "MOGUL DILEMMA: If you extend a flop's contract to lower annual amortisation, what is the primary business risk?", options: ["You are locked into paying higher total wages over a longer period (The Wage Trap)", "The club must immediately record the remaining book value as a 'Total Impairment' loss on the current year's ledger", "UEFA will fine the club for 'Aggressive Accounting' and trigger a transfer ban", "The player becomes a free agent immediately under the 1995 Bosman Ruling"], correct: "You are locked into paying higher total wages over a longer period (The Wage Trap)", explanation: "Accounting is a double-edged sword. Spreading the amortisation hit thinner often means paying millions in wages to a player who has no resale value." },
+      { id: 80, q: "When a player leaves for free after their contract fully expires, why is it not an accounting loss?", options: ["Because the asset has been fully amortised to £0 on the books", "Because UEFA regulations mandate that free transfers are excluded from PSR loss calculations", "Because the club's insurance policy absorbs the remaining market value of the expired asset", "Because the player's image rights automatically revert to the original selling club"], correct: "Because the asset has been fully amortised to £0 on the books", explanation: "If the contract is complete, the book value is zero. It is bad sport management, but neutral for FFP accounting." },
+
+      // --- TOPIC 5: SQUAD QUOTAS & BOSMAN (81-100) ---
+      { id: 81, q: "What is the 'Golden Rule' of contract management?", options: ["Buy low, sell high", "Renew at 24 months, Sell at 18 months", "Always sign 5-year deals", "Never sell to rivals"], correct: "Renew at 24 months, Sell at 18 months", explanation: "Never let a player reach the final 12 months." },
+      { id: 82, q: "SCENARIO: Your star player enters the 'Danger Zone' (18 months left) and won't sign. What is the Mogul decision?", options: ["Keep him and hope he re-signs", "Sell immediately to maximize value", "Play him in the reserves", "Offer him double wages"], correct: "Sell immediately to maximize value", explanation: "You are in the Danger Zone. Sell now or lose the asset for free later." },
+      { id: 83, q: "What happens when a player enters the final 12 months of their contract?", options: ["Their value increases", "The player holds 100% of the leverage", "The club can extend it automatically", "FIFA intervenes"], correct: "The player holds 100% of the leverage", explanation: "The club is powerless; the player can leave for free in a year." },
+      { id: 84, q: "What did the 1995 Bosman Ruling legally establish in European football?", options: ["That out-of-contract players can leave their club for £0 (Free Transfer)", "The mandatory inclusion of fixed release clauses in all standard player contracts", "The prohibition of Multi-Club Ownership (MCO) networks within the same domestic league", "The enforcement of a strict 25-man squad limit across all UEFA competitions"], correct: "That out-of-contract players can leave their club for £0 (Free Transfer)", explanation: "It ended the system where clubs retained rights to out-of-contract players." },
+      { id: 85, q: "Why is a 'Free Transfer' (like Kylian Mbappé's move to Real Madrid) never actually free for the acquiring club?", options: ["Because massive signing bonuses and highly inflated wages replace the traditional transfer fee", "Because the acquiring club must still pay a mandatory 'development compensation' fee to the player's original academy", "Because UEFA mandates a 15% luxury tax on all out-of-contract signings to maintain market stability", "Because the player's commercial image rights must be legally bought out from their previous club's sponsors"], correct: "Because massive signing bonuses and highly inflated wages replace the traditional transfer fee", explanation: "Mbappé demanded a €100m+ signing bonus because there was no transfer fee." },
+      { id: 86, q: "What creates the 'English Tax' (inflated prices for Homegrown players)?", options: ["They are better players", "Scarcity of the 8 Homegrown slots", "Media hype", "Currency exchange rates"], correct: "Scarcity of the 8 Homegrown slots", explanation: "You legally need 8 HG players. Supply is low, demand is high = High Price." },
+      { id: 87, q: "Under Premier League registration rules, does a 'Homegrown' (HG) player have to be a British citizen?", options: ["No, nationality is irrelevant; it strictly depends on where the player trained for 3 years before turning 21", "Yes, the player must hold a valid UK passport or qualify for a Home Office work permit", "No, but they must have made at least one senior competitive appearance for a British club before age 18", "Yes, unless they are officially registered as an 'Under-21 Academy Scholar' on the league's centralized database"], correct: "No, nationality is irrelevant; it strictly depends on where the player trained for 3 years before turning 21", explanation: "It is based on where they trained for 3 years before age 21, not their passport." },
+      { id: 88, q: "Why did Cesc Fàbregas, a Spanish international, officially count as a 'Homegrown' player for Arsenal?", options: ["Because Arsenal signed him at age 16, allowing him to train at an English club for 3 years prior to turning 21", "Because Arsenal paid a mandatory 'Training Compensation' fee to the Spanish FA, which legally transferred his domestic registration rights", "Because UEFA regulations allow clubs one 'Foreign Designated Player' to bypass the standard Homegrown quota", "Because his international transfer was registered before the official 2010 Homegrown quota regulations were enacted"], correct: "Because Arsenal signed him at age 16, allowing him to train at an English club for 3 years prior to turning 21", explanation: "He trained at an English FA club for 3 seasons prior to turning 21." },
+      { id: 89, q: "What is the 'U21 Cheat Code' utilized by elite Sporting Directors in squad building?", options: ["U21 players do NOT need to be registered in the strict 25-man Premier League squad limit", "U21 players' wages are completely exempt from the club's annual PSR loss calculations", "Clubs can automatically recall U21 players from domestic loans at any time outside of the transfer window", "U21 players can be signed and officially registered at any point during the season, completely bypassing standard transfer windows"], correct: "U21 players do NOT need to be registered in the strict 25-man Premier League squad limit", explanation: "Elite clubs hoard young talent because they don't take up valuable squad slots." },
+      { id: 90, q: "Which Manchester United player famously left for free in 2022, costing the club an £89m asset?", options: ["Paul Pogba", "Romelu Lukaku", "Ángel Di María", "Mason Greenwood"], correct: "Paul Pogba", explanation: "Paul Pogba ran down his contract, leaving United with £0 return on their record signing." },
+      { id: 91, q: "What is the Premier League squad size limit?", options: ["23", "25", "30", "20"], correct: "25", explanation: "The limit is 25 players over the age of 21." },
+      { id: 92, q: "How many Homegrown (HG) players are required?", options: ["4", "6", "8", "10"], correct: "8", explanation: "At least 8 players must be Homegrown." },
+      { id: 93, q: "Under Premier League quota rules, what happens if a club cannot fill their 8 required Homegrown (HG) slots?", options: ["The empty slots are forfeited, forcing the club to play the season with a reduced squad size", "The club is handed a mandatory £5m 'Luxury Tax' fine by the FA for every missing player", "The club faces an automatic 3-point deduction for failing to meet domestic development quotas", "The club is legally forced to register Under-21 academy players on senior-level contracts to fill the void"], correct: "The empty slots are forfeited, forcing the club to play the season with a reduced squad size", explanation: "You must leave the slots empty (play with a smaller squad)." },
+      { id: 94, q: "Before the 1995 Bosman Ruling, what immense leverage did clubs have over players with expired contracts?", options: ["They retained the player's registration and could demand a transfer fee even if the contract had ended", "They possessed the legal right to trade the player's registration to a foreign club without requiring the player's personal consent", "They were legally permitted to unilaterally extend any contract for one additional year at the same wage", "They possessed the power to temporarily ban the player from domestic competition until a new deal was signed"], correct: "They retained the player's registration and could demand a transfer fee even if the contract had ended", explanation: "They retained the player's registration even after the contract expired." },
+      { id: 95, q: "Mogul Logic: When does club leverage begin to collapse?", options: ["6 months", "18-24 months", "3 years", "Never"], correct: "18-24 months", explanation: "In the 18-24 month window, leverage shifts to the player." },
+      { id: 96, q: "According to the Timeline of Leverage, what does the 'Amber Warning' at 24 months represent?", options: ["The best time to sell", "The last safe moment to renew before asset instability", "The player becomes a free agent", "The release clause activates"], correct: "The last safe moment to renew before asset instability", explanation: "24 months is the warning; beyond this, the asset value wobbles." },
+      { id: 97, q: "In football business terminology, what is the exact definition of a 'Free Agent'?", options: ["A player whose contract has completely expired, leaving them without a club and free to sign anywhere", "A player who has submitted a formal transfer request and waived their right to a loyalty bonus", "An Under-21 academy graduate who does not take up a registered slot in the 25-man squad limit", "A player whose current club has agreed to subsidize their wages while they play on loan elsewhere"], correct: "A player whose contract has completely expired, leaving them without a club and free to sign anywhere", explanation: "When the contract clock hits zero, the player becomes a 'Free Agent'. They hold all the leverage because acquiring clubs do not have to pay a transfer fee to sign them." },
+      { id: 98, q: "Which Arsenal player forced a swap deal by running down his contract?", options: ["Ozil", "Alexis Sánchez", "Ramsey", "Van Persie"], correct: "Alexis Sánchez", explanation: "Alexis Sánchez ran down his contract." },
+      { id: 99, q: "What specific legal framework did Jean-Marc Bosman use in 1995 to successfully sue his club and permanently dismantle the old transfer system?", options: ["European Union labor laws guaranteeing freedom of movement for workers", "The FIFA Code of Ethics regarding fair player compensation", "The Court of Arbitration for Sport's guidelines on employment monopolies", "The UEFA Financial Fair Play charter on restrictive asset retention"], correct: "European Union labor laws guaranteeing freedom of movement for workers", explanation: "Bosman successfully argued that retaining his registration after his contract expired violated EU labor laws regarding freedom of movement, giving birth to the modern 'Free Transfer'." },
+      { id: 100, q: "MOGUL MATH: The Premier League mandates a maximum of 17 'Open' slots for non-Homegrown players. If your club only has 5 eligible Homegrown players this season, what is the absolute maximum squad size you can legally register?", options: ["22 players", "25 players, but you must pay a luxury tax for the 3 missing HG slots", "20 players", "25 players, provided you fill the 3 missing slots with U21 Academy players"], correct: "22 players", explanation: "You can never exceed 17 Open slots. 17 Open + 5 Homegrown = a maximum squad size of 22. The 3 unfilled Homegrown slots simply vanish." }
+    ]
+  }
+};
+
+        /* 5. UNIVERSAL LOADER ENGINE (With Theme Scrubber) */
+/* ----------------------------------------------------------------
+   THE HYBRID "HARVESTER" ENGINE
+   Maps Module/Topic IDs to your HTML content blocks.
+   ---------------------------------------------------------------- */
+
+const lessonMap = {
+    // MODULE 1: FOUNDATION
+    1: {
+        1: 'topic-pitch-markings',
+        2: 'topic-teams-kits',
+        3: 'topic-guess-who',
+        4: 'topic-positions-roles',
+        5: 'topic-set-pieces',
+        6: 'topic-offside-rule'
+    },
+    // MODULE 2: PRO LEAGUES
+    2: {
+        1: 'topic-what-is-a-league',
+        2: 'topic-the-big-five',
+        3: 'topic-premier-league-era',
+        4: 'topic-english-traditions', // <--- INSERTED
+        5: 'topic-champions-league',   // SHIFTED
+        6: 'topic-world-cup'           // SHIFTED
+    },
+    // MODULE 3: ELITE STRATEGY
+    3: {
+        1: 'topic-modern-formations',
+        2: 'topic-high-press',
+        3: 'topic-chaos-window',
+        4: 'topic-set-play-mastery',
+        5: 'topic-module-3-total-football' 
+    },
+    // MODULE 4: BUSINESS MOGUL (Placeholder IDs - Create these divs when you build content)
+    4: {
+        1: 'topic-market',
+        2: 'topic-takeovers',
+        3: 'topic-ffp',
+        4: 'topic-amortisation',
+        5: 'topic-squad-quotas'
+    }
+};
+
+/* --- NAVIGATION RESOLVER --- */
+function getNextConfig(modNum, topicNum, totalTopics) {
+    if (topicNum < totalTopics) {
+        return {
+            label: `NEXT TOPIC <i class="fas fa-arrow-right"></i>`,
+            action: function () {
+                validateUniversalLesson(topicNum + 1, modNum);
+            }
+        };
+    } else {
+        return {
+            label: `FINAL EXAM <i class="fas fa-trophy"></i>`,
+            action: function () {
+                validateUniversalLesson(99, modNum);
+            }
+        };
+    }
+}
+
+// ============================================================
+// --- UNIVERSAL LESSON VALIDATOR (VAR SYSTEM SAFE) ---
+// ============================================================
+
+function validateUniversalLesson(nextTopicNum, modNum) {
+    if (typeof InputGuard === 'undefined' || !InputGuard.canInteract()) return;
+
+    InputGuard.lock(10000);
+
+    const checkbox = document.querySelector('#univ-content-area .lesson-complete-check');
+
+    if (checkbox && !checkbox.checked) {
+        showOffsideWarning("DECISION: NO GOAL", "(Check the box to stay onside)");
+        return;
+    }
+
+    const varOverlay = document.getElementById('var-overlay');
+    const varText = varOverlay ? varOverlay.querySelector('p') : null;
+
+    const goNext = () => {
+        if (typeof InputGuard !== 'undefined') InputGuard.unlock();
+
+        // 🔥 FLIP THE SWITCH BEFORE TRANSITION
+        suppressCompletionAudio = true; 
+
+        // 🔥 Clean overlay teardown
+        if (typeof FXController !== 'undefined' && typeof FXController.clearOverlay === 'function') {
+            FXController.clearOverlay();
+        }
+
+        if (varOverlay) {
+            varOverlay.classList.remove('active', 'visible', 'var-approved');
+        }
+
+        if (typeof loadUniversalLesson !== 'function' || typeof showScreen !== 'function') {
+            return;
+        }
+
+        // =====================================================
+        // 🔥 AAA AUDIO FADE INTEGRATION (IMMUNITY ENABLED)
+        // =====================================================
+
+        if (typeof fadeAndStopCrowd === 'function') {
+            fadeAndStopCrowd(2.0);
+        }
+
+        // 🔥 Micro-delay ensures fade scheduling locks in
+        setTimeout(() => {
+            if (nextTopicNum === 99) {
+                showScreen(`topic-module-${modNum}-exam-lobby`);
+            } else {
+                loadUniversalLesson(modNum, nextTopicNum);
+            }
+        }, 50);
+    };
+
+    // 🔥 FIX: Ensure fade still happens even if FXTimeline fails
+    if (!varOverlay || typeof FXTimeline === 'undefined' || typeof FXTimeline.play !== 'function') {
+        if (typeof fadeAndStopCrowd === 'function') {
+            fadeAndStopCrowd(2.0);
+        }
+        goNext();
+        return;
+    }
+
+    const safeFX = (name) => {
+        if (typeof playStadiumFX === 'function') {
+            playStadiumFX(name);
+        }
+    };
+
+    FXTimeline.play([
+        {
+            type: "callback",
+            fn: () => {
+                varOverlay.classList.remove('var-approved');
+                if (varText) varText.innerText = "CHECKING DECISION...";
+            }
+        },
+
+        { type: "overlay", element: varOverlay },
+
+        { type: "callback", fn: () => safeFX("var-start") },
+
+        { type: "delay", duration: 2100 },
+
+        { type: "callback", fn: () => safeFX("var-build") },
+
+        { type: "delay", duration: 2400 },
+
+        {
+            type: "callback",
+            fn: () => {
+                varOverlay.classList.add('var-approved');
+                if (varText) varText.innerText = "DECISION: ONSIDE";
+                safeFX("var-success");
+            }
+        },
+
+        { type: "delay", duration: 4000 },
+
+        { type: "callback", fn: goNext }
+    ]);
+}
+
+/* --- UNIVERSAL LESSON LOADER (FINAL: PURE ARCHITECTURE) --- */
+function loadUniversalLesson(modNum, topicNum) {
+    // 🔥 RESET THE FLAG: Allow audio to play again for new topics
+    suppressCompletionAudio = false;
+
+    console.log(`Loading Lesson: Mod ${modNum}, Topic ${topicNum}`);
+
+    // 1. Define Map
+    const lessonIds = {
+        1: ['topic-pitch-markings', 'topic-teams-kits', 'topic-guess-who', 'topic-positions-roles', 'topic-set-pieces', 'topic-offside-rule'],
+        2: ['topic-what-is-a-league', 'topic-the-big-five', 'topic-premier-league-era', 'topic-english-traditions', 'topic-champions-league', 'topic-world-cup'],
+        3: ['topic-modern-formations', 'topic-high-press', 'topic-chaos-window', 'topic-set-play-mastery', 'topic-module-3-total-football'],
+        4: ['topic-market', 'topic-takeovers', 'topic-ffp', 'topic-amortisation', 'topic-squad-quotas']
+    };
+
+    if (!lessonIds[modNum] || !lessonIds[modNum][topicNum - 1]) {
+        console.error("Lesson ID not found.");
+        return;
+    }
+
+    const targetId = lessonIds[modNum][topicNum - 1];
+    const sourceContent = document.getElementById(targetId);
+    if (!sourceContent) return;
+
+    // 2. Setup Viewer Containers
+    const viewer = document.getElementById('universal-lesson-viewer');
+    const contentArea = document.getElementById('univ-content-area');
+    const titleArea = document.getElementById('univ-title');
+    const backBtn = document.getElementById('univ-back-btn');
+    const navGroup = document.querySelector('#universal-lesson-viewer .nav-group-left');
+    const nextBtn = document.getElementById('univ-next-btn');
+
+    // 3. Inject Content
+    const sourceCard = sourceContent.querySelector('.lesson-card');
+    contentArea.innerHTML = sourceCard ? sourceCard.innerHTML : "Error loading content.";
+
+    // =====================================================
+// PROGRESS TRACKING WIRE-UP (SAFE VERSION + BURST)
+// =====================================================
+const lessonCheckbox = contentArea.querySelector('.lesson-complete-check');
+const lessonKey = `${modNum}-${topicNum}`;
+
+// Ensure array exists
+if (!Array.isArray(academyProgress.completedLessons)) {
+    academyProgress.completedLessons = [];
+}
+
+if (lessonCheckbox) {
+        // Restore state
+        lessonCheckbox.checked = academyProgress.completedLessons.includes(lessonKey);
+
+        lessonCheckbox.onchange = function (e) {
+            const isChecked = e.target.checked;
+
+            // 🔥 Guard against bad data
+            if (!lessonKey) return;
+
+            // ===============================
+            // STATE UPDATE
+            // ===============================
+            if (isChecked) {
+                if (!academyProgress.completedLessons.includes(lessonKey)) {
+                    academyProgress.completedLessons.push(lessonKey);
+                }
+            } else {
+                academyProgress.completedLessons =
+                    academyProgress.completedLessons.filter(k => k !== lessonKey);
+            }
+
+            // ===============================
+            // BUTTON BURST & AUDIO LOGIC
+            // ===============================
+
+            // 🔥 Dynamically calculate total with strict Array type-checking
+            const total = Array.isArray(lessonIds[modNum]) ? lessonIds[modNum].length : 0;
+
+            const checkedCount = academyProgress.completedLessons.filter(
+                k => typeof k === 'string' && k.startsWith(`${modNum}-`)
+            ).length;
+
+            const isModuleComplete = checkedCount === total;
+
+            const wasModuleAlreadyUnlocked = academyProgress.unlockedModules?.includes(modNum);
+
+            // Ensure persistent storage exists
+            if (!academyProgress.unlockedModules) {
+                academyProgress.unlockedModules = [];
+            }
+
+            // 1. Permanent UI Unlock (Fires Once Forever)
+            if (isChecked && isModuleComplete && !wasModuleAlreadyUnlocked) {
+                academyProgress.unlockedModules.push(modNum);
+
+                academyProgress.unlockedModules = Array.from(
+                    new Set(academyProgress.unlockedModules)
+                );
+
+                const navBtn = document.getElementById('univ-next-btn');
+                const bottomBtn = document.querySelector('.lesson-bottom-nav .next-btn');
+
+                // Clean reflow and trigger for Top Button
+                if (navBtn) {
+                    navBtn.classList.remove('exam-ready-burst');
+                    void navBtn.offsetWidth; // Force reflow
+                    navBtn.classList.add('exam-ready-burst');
+                }
+
+                // Clean reflow and trigger for Bottom Button
+                if (bottomBtn) {
+                    bottomBtn.classList.remove('exam-ready-burst');
+                    void bottomBtn.offsetWidth; // Force reflow
+                    bottomBtn.classList.add('exam-ready-burst');
+                }
+
+                // 🔥 Trigger cheer ONLY once
+                handleModuleCompletion(modNum, true);
+            }
+
+            // ===============================
+            // FINAL PERSIST
+            // ===============================
+            if (typeof saveProgressToStorage === 'function') {
+                saveProgressToStorage(academyProgress);
+            }
+
+            // ===============================
+            // UI UPDATES
+            // ===============================
+            updateModuleProgressBars();
+
+            if (typeof updateTopicLocks === 'function') {
+                updateTopicLocks();
+            }
+        };
+    }
+
+    // =====================================================
+    // 4. APPLY THEME VIA CLASS (NO INLINE STYLING)
+    // =====================================================
+    const container = document.getElementById('univ-container');
+
+    container.classList.remove('theme-foundation', 'theme-pro', 'theme-tactician', 'theme-mogul');
+
+    let moduleName = "FOUNDATION LEVEL";
+    let themeClass = "theme-foundation";
+
+    if (modNum === 2) { themeClass = "theme-pro"; moduleName = "PRO LEVEL"; }
+    if (modNum === 3) { themeClass = "theme-tactician"; moduleName = "TACTICIAN LEVEL"; }
+    if (modNum === 4) { themeClass = "theme-mogul"; moduleName = "MOGUL LEVEL"; }
+
+    container.classList.add(themeClass);
+
+    // Update Title
+    const sourceTitleObj = sourceContent.querySelector('.lesson-title-text, .foundation-title');
+    titleArea.innerText = sourceTitleObj ? sourceTitleObj.innerText : "Lesson";
+
+    // Update Badges & Ensure Theme Application
+    const moduleBadgeArea = document.getElementById('univ-module-badge');
+    if (moduleBadgeArea) {
+        moduleBadgeArea.innerText = moduleName;
+        // Strip old themes, apply new one directly to the badge
+        moduleBadgeArea.className = `module-badge ${themeClass}`;
+    }
+
+    const topicBadgeArea = document.getElementById('univ-topic-badge');
+    if (topicBadgeArea) {
+        topicBadgeArea.innerText = `TOPIC ${topicNum}`;
+        // Strip old themes, apply new one directly to the badge
+        topicBadgeArea.className = `topic-badge ${themeClass}`;
+    }
+
+    // =====================================================
+    // 5. NAVIGATION LOGIC (DRY PATTERN)
+    // =====================================================
+    const totalTopics = lessonIds[modNum].length;
+
+    // Single Source of Truth
+    const nextConfig = getNextConfig(modNum, topicNum, totalTopics);
+
+    // Hub Button
+    backBtn.onclick = function () {
+        showScreen(`topic-module-${modNum}-hub`);
+    };
+
+    // Previous Button
+    let prevBtn = document.getElementById('univ-prev-btn');
+    if (!prevBtn) {
+        prevBtn = document.createElement('button');
+        prevBtn.id = 'univ-prev-btn';
+        prevBtn.className = 'back-btn';
+        navGroup.appendChild(prevBtn);
+    }
+
+    if (topicNum > 1) {
+        prevBtn.style.display = 'inline-flex';
+        prevBtn.innerHTML = `<i class="fas fa-arrow-left"></i> PREV`;
+        prevBtn.onclick = function () {
+            loadUniversalLesson(modNum, topicNum - 1);
+        };
+    } else {
+        prevBtn.style.display = 'none';
+    }
+
+    // Top Next Button (Safe Overwrite Pattern)
+    const newNextBtn = nextBtn.cloneNode(true);
+    nextBtn.parentNode.replaceChild(newNextBtn, nextBtn);
+    const actualNextBtn = document.getElementById('univ-next-btn');
+
+    actualNextBtn.innerHTML = nextConfig.label;
+    actualNextBtn.onclick = nextConfig.action;
+
+    // =====================================================
+    // 6. CLEAN BOTTOM NAV (NO STACKING)
+    // =====================================================
+    let existingBottomNav = document.querySelector('.lesson-bottom-nav');
+    if (existingBottomNav) existingBottomNav.remove();
+
+    let bottomNav = document.createElement('div');
+    bottomNav.className = "lesson-bottom-nav flex-column-center";
+
+    let consoleWrap = document.createElement('div');
+    consoleWrap.className = "var-console";
+    consoleWrap.innerHTML = `
+        <span class="var-dot"></span>
+        <span class="var-text">[VAR_PROTOCOL] : VERIFICATION REQUIRED</span>
+    `;
+
+    let bottomNextBtn = document.createElement('button');
+    bottomNextBtn.className = "next-btn";
+    bottomNextBtn.innerHTML = nextConfig.label;
+    bottomNextBtn.onclick = nextConfig.action;
+
+    bottomNav.appendChild(consoleWrap);
+    bottomNav.appendChild(bottomNextBtn);
+    contentArea.appendChild(bottomNav);
+
+    // =====================================================
+    // 7. SHOW SCREEN
+    // =====================================================
+    showScreen('universal-lesson-viewer');
+}
+
+
+/* ============================================================
+   8. ELITE EXAM ENGINE (UPDATED FOR JSON INFRASTRUCTURE)
+   ============================================================ */
+
+// 1. Initialize Session State
+let examSession = { 
+    module: 0, 
+    questions: [], 
+    currentIndex: 0, 
+    score: 0, 
+    strikes: 0, 
+    currentStreak: 0 
+};
+
+/* --- EXAM GATEKEEPER (BYPASS MODE - FORCE OPEN) --- */
+function attemptExamEntry(moduleId) {
+    console.log("🔐 FORCE OPENING EXAM: Module " + moduleId);
+    
+    // 1. Target the Lobby Screen ID
+    const targetScreenId = `topic-module-${moduleId}-exam-lobby`;
+    
+    // 2. Immediate Navigation (No Checks)
+    showScreen(targetScreenId);
+}
+
+// 2. The New Start Function (Reads from 'const modules')
+async function startExam(modNum) {
+    console.log("KICK OFF: Module " + modNum);
+
+    // Ensure audio assets are loaded before gameplay begins
+    if (typeof preloadAudioBuffers === 'function') {
+        try {
+            await preloadAudioBuffers();
+        } catch (err) {
+            console.error("Audio preload failed:", err);
+        }
+    }
+
+    // A. Target the correct module data
+    const moduleKey = 'mod' + modNum;
+
+    // Safety Check: Does this module exist?
+    if (!modules[moduleKey]) {
+        console.error("CRITICAL ERROR: Data for " + moduleKey + " is missing.");
+        alert("System Error: Exam data not found.");
+        return;
+    }
+
+    let sourceQuestions = modules[moduleKey].questions;
+
+    // B. Shuffle Logic (Fisher-Yates)
+    let shuffled = [...sourceQuestions];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    // C. Setup Session (Take first 15)
+    examSession.questions = shuffled.slice(0, 15);
+    examSession.module = modNum;
+    examSession.currentIndex = 0;
+    examSession.score = 0;
+    examSession.strikes = 0;
+    examSession.currentStreak = 0;
+    examSession.timeExpired = false;
+
+    // Clear lingering shake animations
+    const arenaContainer = document.querySelector('.exam-arena-container');
+    if (arenaContainer) {
+        arenaContainer.classList.remove('room-shake');
+    }
+
+    // D. Go!
+    showScreen('exam-interface');
+    renderExamQuestion();
+}
+
+/* --- REVISED ANSWER CHECKER (Dim -> Flash -> Feedback) --- */
+function checkExamAnswer(selectedText, selectedIndex, btnElement) {
+    // 🛡️ ANTI-SPAM
+    if (!InputGuard.canInteract()) return;
+    InputGuard.lock(3000);
+
+    clearInterval(shotClockInterval); // Stop Timer
+
+    // Lock Interface & Apply Dimming to unselected options
+    document.querySelectorAll('#exam-options .topic-card').forEach(b => {
+        b.onclick = null;
+        if (b !== btnElement) {
+            b.classList.add('dimmed-option');
+        }
+    });
+
+    const q = examSession.questions[examSession.currentIndex];
+    let isCorrect = false;
+    if (typeof q.correct === 'number') {
+        isCorrect = (selectedIndex === q.correct);
+    } else {
+        isCorrect = (selectedText === q.correct);
+    }
+
+    // --- FX STAGE 1: THE CALCULATION FLASH ---
+    btnElement.classList.add('flash-white');
+
+    // --- FX STAGE 2: COLOR REVEAL (Wait 800ms for tension) ---
+    setTimeout(() => {
+        btnElement.classList.remove('flash-white');
+
+        if (isCorrect) {
+            btnElement.classList.add('correct'); 
+            examSession.score++;
+            examSession.currentStreak++;
+        } else {
+            btnElement.classList.add('incorrect'); 
+            examSession.currentStreak = 0; 
+            
+            // TRIGGER VIOLENT ARENA SHAKE
+            const arenaContainer = document.querySelector('.exam-arena-container');
+            arenaContainer.classList.remove('room-shake'); 
+            void arenaContainer.offsetWidth; 
+            arenaContainer.classList.add('room-shake');
+        }
+    }, 800);
+
+    // --- FX STAGE 3: OUTCOME ---
+    setTimeout(() => {
+        if (isCorrect) {
+            // 🔥 THE FIX: Fade out the cheer gracefully
+            if(typeof playAcademySound === 'function') {
+                playAcademySound('correct', {
+                    volume: 0.7,
+                    duration: 4500
+                });
+            }
+            showCelebrationOverlay(examSession.currentStreak);
+        } else {
+            if(typeof playAcademySound === 'function') playAcademySound('wrong');
+            let explanationText = q.explanation || "Tactical error.";
+            
+            // PRE-LOAD Mod 4 Strike, but route everyone through the buffer so the Boo plays!
+            if (examSession.module === 4) {
+                examSession.strikes = 3; 
+            } 
+            showErrorBufferOverlay(explanationText);
+        }
+    }, REVEAL_DELAY); 
+}
+
+
+/* --- TIMER ENGINE --- */
+let shotClockInterval;
+
+function startShotClock() {
+    const timerText = document.getElementById('shot-clock-text');
+    const timerBar = document.getElementById('timer-bar-fill');
+    
+    // Reset State
+    if(timerText) {
+        timerText.innerText = "15";
+        timerText.style.color = "#fff";
+        timerText.classList.remove('panic-pulse'); // Remove panic state
+    }
+    if(timerBar) {
+        timerBar.style.width = "100%";
+        timerBar.style.background = "var(--brand-success)"; // Locked to Neon Green
+    }
+    
+    let time = 15;
+    
+    clearInterval(shotClockInterval);
+
+    shotClockInterval = setInterval(() => {
+        time--;
+        
+        if(timerText) timerText.innerText = (time < 10 ? "0" : "") + time;
+
+        if(timerBar) {
+            const percentage = (time / 15) * 100;
+            timerBar.style.width = percentage + "%";
+
+            // Panic Mode (Red + Pulse)
+            if (time <= 5) {
+                timerBar.style.background = "#ff4444";
+                if(timerText) {
+                    timerText.style.color = "#ff4444";
+                    timerText.classList.add('panic-pulse');
+                }
+            }
+        }
+
+        if (time <= 0) {
+            clearInterval(shotClockInterval);
+            handleTimeWasting();
+        }
+    }, 1000);
+}
+
+function stopShotClock() {
+    clearInterval(shotClockInterval);
+}
+
+function handleTimeWasting() {
+    if(typeof playAcademySound === 'function') playAcademySound('whistle', { duration: 1200 });
+    // Time wasting counts as a wrong answer, escalates discipline
+    handleRefereeDiscipline("Time Wasting (15s Limit)"); 
+}
+
+
+/* --- REVISED RENDERER (With Slide Animation & Zero Inline Styles) --- */
+function renderExamQuestion() {
+    if (!examSession.questions || examSession.questions.length === 0) {
+        console.error("No questions loaded.");
+        return;
+    }
+
+    const q = examSession.questions[examSession.currentIndex];
+    
+    const questionHeader = document.getElementById('exam-q-text');
+    const container = document.getElementById('question-container');
+    const optionsGrid = document.getElementById('exam-options');
+    
+    container.classList.remove('room-shake'); 
+    
+    // Force Re-flow for Question Slide-in
+    questionHeader.classList.remove('slide-in-anim');
+    optionsGrid.classList.remove('slide-in-anim');
+    void questionHeader.offsetWidth; 
+    questionHeader.classList.add('slide-in-anim');
+    optionsGrid.classList.add('slide-in-anim');
+    
+    const questionText = q.q || q.question || "Question text missing";
+    questionHeader.innerHTML = questionText;
+
+    document.getElementById('exam-progress-text').innerText = `QUESTION ${examSession.currentIndex + 1} OF 15`;
+    document.getElementById('exam-current-score').innerText = examSession.score;
+
+    optionsGrid.innerHTML = ''; 
+
+    startShotClock();
+
+    let opts = q.options.map((opt, index) => ({ text: opt, originalIndex: index }));
+    opts.sort(() => Math.random() - 0.5);
+
+    // CLEAN, INLINE-FREE JS LOOP
+    opts.forEach(optObj => {
+        const btn = document.createElement('div');
+        btn.className = 'topic-card exam-option'; 
+        
+        btn.innerHTML = `<h3 class="exam-option-text">${optObj.text}</h3>`;
+        
+        btn.onclick = function() { checkExamAnswer(optObj.text, optObj.originalIndex, btn); };
+        optionsGrid.appendChild(btn);
+    });
+}
+
+
+/* --- 4. OVERLAY: GOAL / STREAK (Dynamic Balls) --- */
+function showCelebrationOverlay(streak) {
+    const overlay = document.getElementById('booking-overlay');
+    const msg = document.getElementById('referee-message');
+    const cardEl = document.getElementById('physical-card-element');
+
+    resetOverlayState(overlay);
+    cardEl.classList.remove('active-red-card', 'active-yellow-card');
+    overlay.classList.add('active');
+
+    // --- BALL LOGIC (1-5 Balls, then Multiplier) ---
+    let iconHTML = "";
+    if (streak <= 5) {
+        // Loop to add soccer balls
+        for (let i = 0; i < streak; i++) {
+            iconHTML += "⚽ ";
+        }
+    } else {
+        // God Mode
+        iconHTML = `🔥 x${streak}`;
+    }
+
+    // Text Logic
+    let title = "GOAL!";
+    let sub = "Clinical Finish";
+    let colorClass = 'overlay-green';
+
+    if (streak === 2) { title = "THE BRACE!"; sub = "Two in a row!"; }
+    else if (streak === 3) { title = "HAT-TRICK!"; sub = "World Class!"; colorClass = 'overlay-blue'; }
+    else if (streak === 4) { title = "THE HAUL!"; sub = "Dominating!"; colorClass = 'overlay-gold'; }
+    else if (streak >= 5) { title = "UNSTOPPABLE!"; sub = "God Mode Active"; colorClass = 'overlay-purple'; }
+
+    overlay.classList.add(colorClass);
+
+    msg.innerHTML = `
+        <div class="celeb-icon">${iconHTML}</div>
+        <div class="celeb-title">${title}</div>
+        <div class="celeb-subtitle">${sub}</div>
+    `;
+
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        if (typeof fadeAndStopCrowd === 'function') fadeAndStopCrowd(1.5); 
+        proceedExam();
+    }, 4000);
+}
+
+
+/* --- 5. OVERLAY: OWN GOAL (Buffer before Referee) --- */
+function showErrorBufferOverlay(explanation) {
+    const overlay = document.getElementById('booking-overlay');
+    const msg = document.getElementById('referee-message');
+    const cardEl = document.getElementById('physical-card-element');
+
+    resetOverlayState(overlay);
+    cardEl.classList.remove('active-red-card', 'active-yellow-card');
+    
+    overlay.classList.add('active', 'overlay-red-mist');
+    
+    // 100% Pure CSS - No inline styles!
+    msg.innerHTML = `
+        <div class="own-goal-icon">⚽</div>
+        <div class="own-goal-title">OWN GOAL!</div>
+        <div class="own-goal-subtitle">Tactical Error Committed</div>
+    `;
+
+    // Wait to let the crowd boo audio fade naturally, THEN call Referee
+    setTimeout(() => {
+        handleRefereeDiscipline(explanation);
+    }, SUDDEN_DEATH_DELAY);
+}
+
+
+/* --- 6. REFEREE LOGIC (Cinematic Refactor) --- */
+/* --- 6. REFEREE LOGIC (Cinematic Refactor - FINAL SAFE VERSION) --- */
+let refereeTimeouts = [];
+
+function clearRefereeTimeouts() {
+    refereeTimeouts.forEach(t => clearTimeout(t));
+    refereeTimeouts = [];
+}
+
+function handleRefereeDiscipline(explanation) {
+    clearRefereeTimeouts(); // 🔥 Prevent timeline stacking bugs
+
+    const msg = document.getElementById('referee-message');
+    const cardEl = document.getElementById('physical-card-element');
+    const overlay = document.getElementById('booking-overlay');
+    
+    resetOverlayState(overlay);
+    overlay.classList.add('active', 'overlay-solid-black');
+
+    if (examSession.module === 1) {
+        examSession.strikes++;
+    } 
+    else if (examSession.module === 2) {
+        if (examSession.strikes === 0) examSession.strikes = (Math.random() < 0.5) ? 1 : 2;
+        else examSession.strikes++;
+    } 
+    else if (examSession.module === 3) {
+        if (examSession.strikes === 0) examSession.strikes = 2;
+        else examSession.strikes = 3;
+    }
+    
+    if (examSession.strikes > 3) examSession.strikes = 3;
+
+    // Always reset card state
+    cardEl.classList.remove('card-hidden', 'active-red-card', 'active-yellow-card');
+
+    if (examSession.strikes === 1) {
+        if (typeof playAcademySound === 'function') {
+            playAcademySound('whistle', { overlap: true, volume: 0.6, duration: 1200 });
+            refereeTimeouts.push(setTimeout(() => {
+                playAcademySound('vogWarning', { stadium: true });
+            }, 1400));
+        }
+
+        msg.innerHTML = `
+            <div class="flag-assembly-wrapper">
+                <div class="flag-assembly">
+                    <div class="flag-pole"></div>
+                    <div class="flag-fabric"></div>
+                </div>
+            </div>
+            <div class="referee-warning-title">REFEREE WARNING</div>
+            <div class="referee-warning-text">${explanation}</div>
+            <div class="referee-warning-subtext">"Watch your step."</div>
+        `;
+
+        refereeTimeouts.push(setTimeout(() => {
+            overlay.classList.remove('active');
+            proceedExam();
+        }, 5000));
+    
+    } else if (examSession.strikes === 2) {
+        if (typeof playAcademySound === 'function') {
+            playAcademySound('whistle', { overlap: true, volume: 0.6, duration: 1200 });
+            refereeTimeouts.push(setTimeout(() => {
+                playAcademySound('vogYellow', { stadium: true });
+            }, 1400));
+        }
+
+        cardEl.classList.add('active-yellow-card');
+
+        msg.innerHTML = `
+            <div class="referee-yellow-title">YELLOW CARD</div>
+            <div class="referee-yellow-text">${explanation}</div>
+            <div class="referee-yellow-subtext">"Tactical Amateurism."</div>
+        `;
+
+        refereeTimeouts.push(setTimeout(() => {
+            overlay.classList.remove('active');
+            proceedExam();
+        }, 5000));
+
+    } else {
+        // --- STRIKE 3 ---
+        if (examSession.module === 4) {
+            triggerRedCard(explanation);
+        } else {
+            if (typeof playAcademySound === 'function') {
+                playAcademySound('whistle', { overlap: true, volume: 0.6, duration: 1200 });
+                refereeTimeouts.push(setTimeout(() => {
+                    playAcademySound('vogSecondYellow', { stadium: true });
+                }, 1400));
+            }
+
+            const STAGE_2_TIME = 5700;
+            const STAGE_3_TIME = 9200;
+
+            // 🟡 Stage 1
+            cardEl.classList.add('active-yellow-card');
+
+            msg.innerHTML = `
+                <div class="referee-yellow-title">YELLOW CARD</div>
+                <div class="referee-yellow-text">${explanation}</div>
+                <div class="referee-yellow-subtext">"Late challenge."</div>
+            `;
+
+            // 🟡🟡 Stage 2
+            refereeTimeouts.push(setTimeout(() => {
+                cardEl.classList.add('card-hidden');
+
+                msg.innerHTML = `
+                    <div class="second-yellow-cards">
+                        <div class="second-yellow-card-item"></div>
+                        <div class="second-yellow-card-item"></div>
+                    </div>
+                    <div class="second-yellow-title">SECOND YELLOW!</div>
+                    <div class="second-yellow-subtext">You're off.</div>
+                `;
+            }, STAGE_2_TIME));
+
+            // 🔴 Stage 3
+            refereeTimeouts.push(setTimeout(() => {
+                cardEl.classList.remove('card-hidden');
+                triggerRedCard(explanation, true);
+            }, STAGE_3_TIME));
+        }
+    }
+}
+
+/* --- HELPER: SHOW RED CARD --- */
+async function triggerRedCard(explanation, skipAudio = false) {
+    clearRefereeTimeouts(); // 🔥 CRITICAL
+
+    const msg = document.getElementById('referee-message');
+    const cardEl = document.getElementById('physical-card-element');
+    const overlay = document.getElementById('booking-overlay');
+
+    if (!explanation) explanation = "Dismissed from the Academy.";
+
+    let relegationText = "";
+    if (examSession.module > 1) {
+        let demotedTo = executeRelegation(examSession.module);
+        if (demotedTo === "IMMUNE") {
+            relegationText = `<span class="relegation-warning-text text-rank-purple">PUNISHMENT WAIVED: MOGUL IMMUNITY ACTIVE.</span>`;
+        } else {
+            relegationText = `<span class="relegation-warning-text">PUNISHMENT: ELITE STATUS REVOKED.<br>RELEGATED TO ${demotedTo}.</span>`;
+        }
+    }
+
+    cardEl.classList.remove('active-yellow-card');
+    cardEl.classList.add('active-red-card');
+
+    msg.innerHTML = `
+        <div class="red-card-title">RED CARD!</div>
+        <div class="red-card-subtitle">SENT OFF.</div>
+        <div class="modal-danger-body">
+            ${explanation}
+            ${relegationText}
+        </div>
+        <div class="modal-return-box">
+            <i class="fas fa-arrow-left"></i> Escorted back to Main Menu...
+        </div>
+    `;
+
+    overlay.classList.add('active');
+
+    // 🔥 THE FIX: If skipAudio is true, we play NOTHING. 
+    // The Second Yellow VOG is already narrating the sequence perfectly.
+    if (!skipAudio) {
+        if (typeof playAcademySound === 'function') {
+            playAcademySound('whistle', { volume: 0.7, duration: 1200 });
+            setTimeout(() => { playAcademySound('vogRed', { stadium: true }); }, 1400);
+        }
+    }
+
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        showScreen('home-screen');
+    }, 6000);
+}
+    
+/* --- 7. PROGRESSION --- */
+function proceedExam() {
+    
+    // 🔥 DO NOT hard-kill audio here
+    // fadeAndStopCrowd() is handling graceful shutdown
+
+    examSession.currentIndex++;
+
+    // 🔥 DYNAMIC LENGTH (No magic numbers)
+    if (examSession.currentIndex >= examSession.questions.length) {
+        finishExam();
+    } else {
+        renderExamQuestion();
+    }
+}
+
+/* --- 8. RESULTS SCREEN & RELEGATION ENGINE (100% CSS PURE) --- */
+/* --- HELPER: RELEGATION ENGINE (TOTAL CASCADE + IMMUNITY) --- */
+function executeRelegation(moduleNum) {
+    let demotedTo = "FOUNDATION";
+
+    // --- MOGUL IMMUNITY (FREE REIGN) ---
+    if (academyProgress.isGraduated) {
+        return "IMMUNE"; 
+    }
+
+    // Total Cascade: Wipe the target foundation and EVERYTHING above it.
+    if (moduleNum === 2) {
+        academyProgress.module1Score = 0;
+        academyProgress.module2Score = 0;
+        academyProgress.module3Score = 0;
+        academyProgress.module4Score = 0;
+        demotedTo = "FOUNDATION";
+    } else if (moduleNum === 3) {
+        academyProgress.module2Score = 0;
+        academyProgress.module3Score = 0;
+        academyProgress.module4Score = 0;
+        demotedTo = "PRO";
+    } else if (moduleNum === 4) {
+        academyProgress.module3Score = 0;
+        academyProgress.module4Score = 0;
+        demotedTo = "TACTICIAN";
+    }
+    
+    updateHubUI(); // Re-locks the UI globally and strips upper badges
+    return demotedTo;
+}
+
+function finishExam() {
+    const modal = document.getElementById('results-modal');
+    const scoreBox = document.getElementById('results-score-box');
+    const title = document.getElementById('results-title');
+    const body = document.getElementById('results-body');
+    const actionBtn = document.getElementById('results-action-btn');
+
+    scoreBox.innerText = `${examSession.score}/15`;
+
+    // Reset all rank classes first
+    const textClasses = ['text-rank-green', 'text-rank-gold', 'text-rank-purple', 'text-rank-red'];
+    const btnClasses  = ['btn-rank-green', 'btn-rank-gold', 'btn-rank-purple', 'btn-rank-red'];
+
+    title.classList.remove(...textClasses);
+    actionBtn.classList.remove(...btnClasses);
+
+    let textClass = 'text-rank-green';
+    let btnClass = 'btn-rank-green';
+    let rankTitle = "1ST TEAM";
+
+    // --- PASS ---
+    if (examSession.score >= 14) {
+        if(typeof playAcademySound === 'function') playAcademySound('correct');
+
+        if (examSession.module === 1 && examSession.score > academyProgress.module1Score) academyProgress.module1Score = examSession.score;
+        if (examSession.module === 2 && examSession.score > academyProgress.module2Score) academyProgress.module2Score = examSession.score;
+        if (examSession.module === 3 && examSession.score > academyProgress.module3Score) academyProgress.module3Score = examSession.score;
+        if (examSession.module === 4 && examSession.score > academyProgress.module4Score) academyProgress.module4Score = examSession.score;
+
+        if (examSession.score === 15) {
+            if (examSession.module === 4) {
+                rankTitle = "MOGUL";
+                textClass = 'text-rank-purple';
+                btnClass = 'btn-rank-purple';
+                academyProgress.isGraduated = true; // <--- PERMANENT IMMUNITY GRANTED
+            } else {
+                rankTitle = "CAPTAIN";
+                textClass = 'text-rank-gold';
+                btnClass = 'btn-rank-gold';
+            }
+        }
+
+        title.innerText = "PROMOTED! 🏆";
+        title.classList.add(textClass);
+        actionBtn.classList.add(btnClass);
+
+        body.innerHTML = `
+            <div class="rank-status-text ${textClass}">RANK: ${rankTitle}</div>
+            Outstanding knowledge.
+        `;
+
+        actionBtn.innerText = "RETURN TO ACADEMY";
+
+        // 💾 AUTOSAVE TRIGGER: Save state mutations to Local Storage
+        saveProgressToStorage(academyProgress);
+
+        updateHubUI();
+
+        if (examSession.module === 4 && examSession.score === 15) {
+            setTimeout(() => { EventDirector.play("graduation"); }, 3000);
+        }
+
+   } else {
+        // --- FAIL / RELEGATION ---
+        if(typeof playAcademySound === 'function') playAcademySound('wrong');
+        
+        textClass = 'text-rank-red';
+        btnClass = 'btn-rank-red';
+
+        title.innerText = "RELEGATED ⬇️";
+        title.classList.add(textClass);
+        actionBtn.classList.add(btnClass);
+
+        // --- CASCADING TIER RELEGATION (DRY) ---
+        if (examSession.module > 1) {
+            let demotedTo = executeRelegation(examSession.module);
+
+            if (demotedTo === "IMMUNE") {
+                body.innerHTML = `
+                    <div class="rank-status-text text-rank-purple">RANK: MOGUL (IMMUNE)</div>
+                    You failed the evaluation, but your permanent Mogul status protects you from relegation. You have Free Reign.
+                `;
+                actionBtn.innerText = "RETURN TO ACADEMY";
+            } else {
+                body.innerHTML = `
+                    <div class="rank-status-text text-rank-red">RANK: STRIPPED</div>
+                    You failed the evaluation. Your Elite status has been revoked. You are relegated back to ${demotedTo} Level.
+                `;
+                actionBtn.innerText = "RETURN TO " + demotedTo;
+            }
+
+        } else {
+            body.innerHTML = `
+                <div class="rank-status-text text-rank-red">RANK: IMPACT SUB</div>
+                Not enough points. Return to the dressing room and study the tapes.
+            `;
+
+            actionBtn.innerText = "RETURN TO ACADEMY";
+        }
+    }
+
+    // Pure class-based visibility
+    modal.classList.add('active');
+}
+
+
+function closeResults() {
+    const modal = document.getElementById('results-modal');
+    // Pure class-based visibility
+    modal.classList.remove('active');
+    
+    showScreen('home-screen'); 
+}
+
+
+/* --- 9. HELPERS (Must be at the bottom) --- */
+
+function resetOverlayState(overlayElement) {
+    if (!overlayElement) return;
+    // PURITY FIX: Remove the active class instead of using inline style display = 'none'
+    overlayElement.classList.remove('active'); 
+    overlayElement.style.background = ''; 
+    overlayElement.classList.remove('overlay-green', 'overlay-blue', 'overlay-gold', 'overlay-purple', 'overlay-red-mist', 'overlay-solid-black');
+}
+
+
+/* --- REFEREE BRIEFING MODAL LOGIC (Production Clean) --- */
+function openRefereeBriefing(modNum) {
+    const modal = document.getElementById('referee-briefing-modal');
+    const content = document.getElementById('referee-briefing-content');
+    const title = document.getElementById('referee-briefing-title');
+
+    let academyWarning = "";
+    let academyYellow = "";
+    let academyRed = "";
+    let levelName = "";
+
+    if (modNum === 1) {
+        levelName = "FOUNDATION LEVEL";
+        academyWarning = "Your 1st incorrect answer. A free pass, but watch your step.";
+        academyYellow = "Your 2nd incorrect answer. You are on thin ice.";
+        academyRed = "Your 3rd incorrect answer. You are dismissed from the exam.";
+    }
+
+    if (modNum === 2) {
+        levelName = "PRO LEVEL";
+        academyWarning = "<em>Unpredictable.</em> The referee may skip your warning.";
+        academyYellow = "Your 1st or 2nd incorrect answer. Punishment escalates faster.";
+        academyRed = "Exam failed. <span class='text-warning'>Consequence: Relegated to Foundation.</span>";
+    }
+
+    if (modNum === 3) {
+        levelName = "TACTICIAN LEVEL";
+        academyWarning = "<span class='text-warning'>NONE.</span>";
+        academyYellow = "Your 1st incorrect answer. Instant booking.";
+        academyRed = "Exam failed. <span class='text-warning'>Consequence: Relegated to Pro.</span>";
+    }
+
+    if (modNum === 4) {
+        levelName = "BOARDROOM LEVEL";
+        academyWarning = "<span class='text-warning'>NONE.</span>";
+        academyYellow = "<span class='text-warning'>NONE.</span>";
+        academyRed = "<span class='text-warning'>SUDDEN DEATH.</span> Any incorrect answer results in immediate dismissal.";
+    }
+
+    title.innerText = `REFEREE BRIEFING: ${levelName}`;
+
+    content.innerHTML = `
+        <div class="briefing-section">
+            <div class="briefing-icon">🗣️ THE WHISTLE (WARNING)</div>
+            <div class="briefing-real"><strong>Real Football:</strong> The referee verbally cautions a player to calm down before resorting to cards.</div>
+            <div class="briefing-academy"><strong>The Academy:</strong> ${academyWarning}</div>
+        </div>
+
+        <div class="briefing-section">
+            <div class="briefing-icon text-warning">🟨 YELLOW CARD</div>
+            <div class="briefing-real"><strong>Real Football:</strong> A severe formal caution for a reckless foul or unsporting behavior. The player stays on the pitch, but is now walking a tightrope. One more foul equals ejection!</div>
+            <div class="briefing-academy"><strong>The Academy:</strong> ${academyYellow}</div>
+        </div>
+
+        <div class="briefing-section">
+            <div class="briefing-icon text-danger">🟥 RED CARD</div>
+            <div class="briefing-real"><strong>Real Football:</strong> Immediate ejection from the match for a dangerous foul or a second Yellow. The player goes to the locker room, and their team must survive the rest of the game with one less player.</div>
+            <div class="briefing-academy"><strong>The Academy:</strong> ${academyRed}</div>
+        </div>
+    `;
+
+    modal.classList.add('active');
+}
+
+function closeRefereeBriefing() {
+    document.getElementById('referee-briefing-modal').classList.remove('active');
+}
+
+
+// Generates a clean, PlayStation-style trophy chime natively (no files needed!)
+function playTierUnlockChime(level) {
+    try {
+        const ctx = getAudioContext();
+        if (ctx.state === "suspended") ctx.resume();
+        
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        // Pitch escalates based on module tier (1 to 4)
+        const baseFreq = 400 + (level * 150); 
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, ctx.currentTime + 0.4);
+        
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.0);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start();
+        osc.stop(ctx.currentTime + 1.2);
+    } catch(e) { console.warn("Chime failed", e); }
+}
+
+/* --- HUB UI UPDATER (Cinematic Edition - Secure Gating System) --- */
+const previousBadgeStates = { 1: false, 2: false, 3: false, 4: false };
+let isInitialLoad = true;
+
+function updateHubUI() {
+    if (typeof academyProgress === 'undefined') return;
+
+    // ==========================================
+    // 1. GLOBAL SCORE
+    // ==========================================
+    const totalScore =
+        academyProgress.module1Score +
+        academyProgress.module2Score +
+        academyProgress.module3Score +
+        academyProgress.module4Score;
+
+    const scoreVal = document.getElementById('current-score-val');
+    if (scoreVal) scoreVal.innerText = totalScore;
+
+    // ==========================================
+    // 2. MODULE UNLOCK SYSTEM (SECURED)
+    // ==========================================
+    const isPremium = !!academyProgress.isPremiumUser;
+    const isGraduated = !!academyProgress.isGraduated;
+
+    const unlockRules = [
+        {
+            id: 'module-2-gateway',
+            moduleScore: academyProgress.module1Score,
+            requiresPremium: false
+        },
+        {
+            id: 'module-3-gateway-card',
+            moduleScore: academyProgress.module2Score,
+            requiresPremium: true
+        },
+        {
+            id: 'module-4-gateway',
+            moduleScore: academyProgress.module3Score,
+            requiresPremium: true
+        }
+    ];
+
+    unlockRules.forEach(rule => {
+        const el = document.getElementById(rule.id);
+        if (!el) return;
+
+        const meetsScoreRequirement = rule.moduleScore >= 14;
+        const meetsPremiumRequirement = rule.requiresPremium ? isPremium : true;
+
+        const isUnlocked =
+            isGraduated || (meetsScoreRequirement && meetsPremiumRequirement);
+
+        el.classList.toggle('locked', !isUnlocked);
+    });
+
+    // ==========================================
+    // 3. BADGE SYSTEM
+    // ==========================================
+    const badgePills = document.querySelectorAll('.badge-pill-container .badge-item');
+    if (badgePills.length < 5) return;
+
+    const tiers = ["streak", "foundation", "pro", "tactician", "mogul"];
+
+    badgePills.forEach((pill, i) => {
+        if (tiers[i] && !pill.dataset.tier) {
+            pill.setAttribute('data-tier', tiers[i]);
+        }
+    });
+
+    const currentStates = {
+        1: isGraduated || academyProgress.module1Score >= 14,
+        2: isGraduated || academyProgress.module2Score >= 14,
+        3: isGraduated || academyProgress.module3Score >= 14,
+        4: isGraduated
+    };
+
+    const processBadge = (domIndex, isNowActive, stateKey) => {
+        const badge = badgePills[domIndex];
+        if (!badge) return;
+
+        const wasActiveBefore = previousBadgeStates[stateKey];
+
+        badge.setAttribute('data-state', isNowActive ? 'active' : 'locked');
+
+        if (isNowActive && !wasActiveBefore && !isInitialLoad) {
+            badge.classList.add('just-unlocked');
+
+            if (typeof playTierUnlockChime === 'function') {
+                playTierUnlockChime(stateKey);
+            }
+
+            setTimeout(() => {
+                badge.classList.remove('just-unlocked');
+            }, 1500);
+        }
+
+        previousBadgeStates[stateKey] = isNowActive;
+    };
+
+    processBadge(1, currentStates[1], 1);
+    processBadge(2, currentStates[2], 2);
+    processBadge(3, currentStates[3], 3);
+
+    const wasMogulBefore = previousBadgeStates[4];
+    processBadge(4, currentStates[4], 4);
+
+    const mogulJustUnlocked = currentStates[4] && !wasMogulBefore;
+
+    const mogulBadge = badgePills[4];
+    if (mogulBadge) {
+        mogulBadge.classList.toggle('mogul-verified', currentStates[4]);
+    }
+
+    if (mogulJustUnlocked && !isInitialLoad) {
+        setTimeout(() => {
+            if (typeof playAcademySound === 'function') {
+                playAcademySound('correct', { volume: 0.8 });
+            }
+
+            [1, 2, 3, 4].forEach((_, i) => {
+                const el = badgePills[i];
+                if (!el) return;
+
+                setTimeout(() => {
+                    el.classList.add('badge-ripple');
+                    setTimeout(() => el.classList.remove('badge-ripple'), 600);
+                }, i * 150);
+            });
+        }, 100);
+    }
+
+    updateModuleProgressBars();
+    if (typeof updateTopicLocks === 'function') updateTopicLocks();
+
+    isInitialLoad = false;
+}
+
+/* ============================================================
+   STRICT SEQUENTIAL LOCKING (OPTION A)
+   ============================================================ */
+function updateTopicLocks() {
+    if (
+        typeof academyProgress === 'undefined' ||
+        !Array.isArray(academyProgress.completedLessons)
+    ) return;
+
+    const totals = { 1: 6, 2: 6, 3: 5, 4: 5 };
+
+    for (let m = 1; m <= 4; m++) {
+        const totalTopics = totals[m];
+        let allTopicsComplete = true;
+
+        for (let t = 1; t <= totalTopics; t++) {
+            const card = document.querySelector(`.topic-card[data-module="${m}"][data-topic="${t}"]`);
+            if (!card) continue;
+
+            const prevKey = `${m}-${t - 1}`;
+            const thisKey = `${m}-${t}`;
+
+            const isPrevComplete = t === 1 || academyProgress.completedLessons.includes(prevKey);
+
+            // Toggle instantly adds/removes the class based on the boolean condition
+            card.classList.toggle('locked', !isPrevComplete && !academyProgress.isGraduated);
+
+            if (!academyProgress.completedLessons.includes(thisKey)) {
+                allTopicsComplete = false;
+            }
+        }
+
+        const examCard = document.querySelector(`.topic-card.level-exam[data-module="${m}"]`);
+        if (examCard) {
+            examCard.classList.toggle(
+                'locked',
+                !allTopicsComplete && !academyProgress.isGraduated
+            );
+        }
+    }
+}
+
+/* ==========================================
+   MODULE COMPLETION AUDIO (SAFE + PERSISTENT)
+   ========================================== */
+
+// 🔥 Persist across sessions
+if (!academyProgress.completedModules) {
+    academyProgress.completedModules = [];
+}
+
+/* ==========================================
+   MODULE COMPLETION AUDIO (SAFE + PERSISTENT)
+   ========================================== */
+
+/* ==========================================
+   MODULE COMPLETION (OVERLAY BRIDGE)
+   ========================================== */
+function handleModuleCompletion(moduleId, isComplete) {
+    if (suppressCompletionAudio) return;
+    if (!isComplete) return;
+
+    if (!academyProgress.completedModules) {
+        academyProgress.completedModules = [];
+    }
+
+    if (academyProgress.completedModules.includes(moduleId)) {
+        return;
+    }
+
+    academyProgress.completedModules.push(moduleId);
+
+    academyProgress.completedModules = Array.from(
+        new Set(academyProgress.completedModules)
+    );
+
+    // Launch graduation overlay
+    if (typeof showGraduationCeremony === 'function') {
+        showGraduationCeremony(moduleId);
+    }
+}
+
+function updateModuleProgressBars() {
+    if (
+        typeof academyProgress === 'undefined' ||
+        !Array.isArray(academyProgress.completedLessons)
+    ) return;
+
+    const totals = { 1: 6, 2: 6, 3: 5, 4: 5 };
+
+    for (let m = 1; m <= 4; m++) {
+        const completedCount = academyProgress.completedLessons.filter(
+            key => typeof key === 'string' && key.startsWith(`${m}-`)
+        ).length;
+
+        const total = totals[m] || 1;
+
+        const countText = document.getElementById(`module-${m}-count`);
+        const progressBar = document.getElementById(`module-${m}-progress-bar`);
+
+        if (countText) {
+            countText.innerText = `${completedCount} / ${total} TOPICS`;
+        }
+
+        if (progressBar) {
+            const percentage = Math.round((completedCount / total) * 100);
+            const isComplete = percentage >= 100;
+            const wasComplete = progressBar.dataset.complete === "true";
+
+            // 🔥 Only update width if changed (prevents unnecessary reflows)
+            if (progressBar.style.width !== `${percentage}%`) {
+                progressBar.style.width = `${percentage}%`;
+            }
+
+            // 🔥 ONLY animate if:
+            // 1. newly completed
+            // 2. AND user can actually see it (Hub visible OR element rendered)
+            // 🔥 ONLY animate if:
+            // 1. newly completed
+            // 2. AND user can actually see it (Hub visible OR element rendered)
+            if (isComplete && !wasComplete) {
+                if (progressBar.offsetParent !== null) {
+                    progressBar.classList.add("complete");
+
+
+                    // 🔥 NEW: Safe audio trigger
+                    handleModuleCompletion(m, true);
+
+                    setTimeout(() => {
+                        progressBar.classList.remove("complete");
+                    }, 3500); // 🔥 Syncs perfectly with the 3.5s audio duration
+                }
+
+                // ⚠️ IMPORTANT FIX:
+                // Move this OUTSIDE visibility check so state is always correct
+                progressBar.dataset.complete = "true";
+            }
+
+            // Reset state properly if user unchecks
+            if (!isComplete) {
+                progressBar.dataset.complete = "false";
+            }
+        }
+    }
+}
+
+/* --- 10. INITIALIZATION --- */
+function initAcademy() {
+    console.log("⚡ ACADEMY SYSTEM ONLINE");
+
+    const savedData = loadProgressFromStorage();
+
+    if (savedData) {
+        academyProgress = savedData; // It is already safely merged by the loader!
+        console.log("💾 Save Data Loaded:", academyProgress);
+    } else {
+        console.log("🆕 New User Session Started");
+    }
+
+    updateHubUI();
+}
+
+// ============================================================
+// --- MASTER EVENT DELEGATOR (CLICK & KEYBOARD ACCESSIBILITY) ---
+// ============================================================
+function handleCardActivation(e) {
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+
+    const card = e.target.closest('.topic-card');
+    if (!card) return;
+
+    const isTopic = !!card.dataset.topic;
+    const isExam = card.dataset.action === "exam";
+
+    // Ignores clicks on gateway/home cards, handles only topics/exams
+    if (!isTopic && !isExam) return;
+
+    if (e.type === 'keydown' && e.key === ' ') e.preventDefault();
+
+    const modNum = parseInt(card.dataset.module, 10);
+    if (!modNum) return;
+
+    // 🔒 STRICT SEQUENTIAL GATEKEEPER
+    if (card.classList.contains('locked')) {
+        showOffsideWarning("ACCESS DENIED", "Complete the previous lessons to unlock this section.");
+        return;
+    }
+
+    if (isExam) {
+        attemptExamEntry(modNum);
+    } else if (isTopic) {
+        const topicNum = parseInt(card.dataset.topic, 10);
+        loadUniversalLesson(modNum, topicNum);
+    }
+}
+
+// Scope to body for performance, listening to both click and keyboard
+document.body.addEventListener('click', handleCardActivation);
+document.body.addEventListener('keydown', handleCardActivation);
+
+// Ensure init runs
+document.addEventListener('DOMContentLoaded', initAcademy);
+
+/* ============================================================
+   11. GENERIC MODAL ENGINE (10/10 WCAG EDITION)
+   ============================================================ */
+
+const modalOverlay = document.getElementById('modal-overlay');
+const modalBody = document.getElementById('modal-body');
+const modalTitle = document.getElementById('modal-title');
+let lastFocusedElement = null; // Tracks focus for accessibility return
+
+function openModal(content, titleText = 'Expanded Content View') {
+    lastFocusedElement = document.activeElement; // Save where the user was
+    
+    if (modalTitle) modalTitle.textContent = titleText; // Dynamically set ARIA title
+
+    modalBody.innerHTML = '';
+    modalBody.appendChild(content);
+
+    modalOverlay.style.display = 'flex';
+    void modalOverlay.offsetWidth; // Force browser reflow
+
+    modalOverlay.classList.add('active');
+    document.body.classList.add('modal-open');
+    modalOverlay.setAttribute('aria-hidden', 'false'); // ARIA Visibility ON
+
+    trapFocus(); // Engage accessibility trap
+}
+
+function closeModal() {
+    if (!modalOverlay.classList.contains('active')) return;
+
+    modalOverlay.classList.remove('active');
+    document.body.classList.remove('modal-open');
+    modalOverlay.setAttribute('aria-hidden', 'true'); // ARIA Visibility OFF
+
+    setTimeout(() => {
+        // --- VIDEO CLEANUP: Force iframe to stop playing audio ---
+        const iframe = modalBody.querySelector('iframe');
+        if (iframe) {
+            iframe.src = iframe.src; 
+        }
+
+        modalBody.innerHTML = '';
+        modalOverlay.style.display = 'none';
+
+        // --- ACCESSIBILITY: Return focus to original element ---
+        if (lastFocusedElement) {
+            lastFocusedElement.focus();
+        }
+    }, 300); // Wait for CSS fade-out transition
+}
+
+// --- ACCESSIBILITY: FOCUS TRAPPING (No Listener Leaks) ---
+function trapFocus() {
+    const focusableSelectors = `
+        a[href], 
+        button:not([disabled]), 
+        textarea, 
+        input, 
+        select, 
+        iframe,
+        [tabindex]:not([tabindex="-1"])
+    `;
+
+    const focusableElements = modalOverlay.querySelectorAll(focusableSelectors);
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    firstElement.focus();
+
+    function handleTab(e) {
+        if (e.key !== 'Tab') return;
+
+        if (e.shiftKey) { // Shift + Tab (Backwards)
+            if (document.activeElement === firstElement) {
+                e.preventDefault();
+                lastElement.focus();
+            }
+        } else { // Tab (Forwards)
+            if (document.activeElement === lastElement) {
+                e.preventDefault();
+                firstElement.focus();
+            }
+        }
+    }
+
+    modalOverlay.addEventListener('keydown', handleTab);
+
+    // CLEANUP: Remove listener when modal finishes closing to prevent stacking leaks
+    modalOverlay.addEventListener('transitionend', function cleanup() {
+        if (!modalOverlay.classList.contains('active')) {
+            modalOverlay.removeEventListener('keydown', handleTab);
+            modalOverlay.removeEventListener('transitionend', cleanup);
+        }
+    });
+}
+
+// --- EVENT LISTENERS ---
+
+/* Close when clicking background or close button */
+modalOverlay.addEventListener('click', function(e) {
+    if (e.target === modalOverlay || e.target.closest('.modal-close')) {
+        closeModal();
+    }
+});
+
+/* Close via Keyboard (Escape Key) */
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && modalOverlay.classList.contains('active')) {
+        closeModal();
+    }
+});
+
+/* Close via Keyboard on 'X' Button */
+const closeBtn = document.querySelector('.modal-close');
+if (closeBtn) {
+    closeBtn.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            closeModal();
+        }
+    });
+}
+
+// --- HELPER: OPEN YOUTUBE VIDEO IN MODAL ---
+function openYouTubeVideo(videoId, title = 'Video Player') {
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+    iframe.width = "100%";
+    iframe.height = "500";
+    iframe.style.border = "none";
+    iframe.style.borderRadius = "12px";
+    iframe.style.boxShadow = "0 10px 30px rgba(0,0,0,0.8)";
+    iframe.setAttribute("allowfullscreen", "");
+    iframe.setAttribute("allow", "autoplay");
+    iframe.tabIndex = 0; // Make it focusable for the trap
+
+    openModal(iframe, title);
+}
+
+// --- HELPER: IMAGE ZOOM TRIGGER ---
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('zoomable-image')) {
+        const img = document.createElement('img');
+        img.src = e.target.src;
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '90vh';
+        img.style.objectFit = 'contain';
+        img.style.borderRadius = '8px';
+        img.style.boxShadow = '0 0 50px rgba(0,0,0,0.8)';
+        img.tabIndex = 0; // Make it focusable for the trap
+
+        openModal(img, 'Expanded Image View');
+    }
+});
+
+// --- VIDEO TRIGGER (DATA ATTRIBUTE PATTERN) ---
+document.addEventListener('click', function (e) {
+    const trigger = e.target.closest('.video-trigger');
+    if (!trigger) return;
+
+    const videoId = trigger.getAttribute('data-video-id');
+    const videoTitle = trigger.getAttribute('data-video-title');
+
+    if (!videoId) return;
+
+    openYouTubeVideo(videoId, videoTitle);
+});
+
+// --- DEEP DIVE MODAL TRIGGER (DATA ATTRIBUTE PATTERN) ---
+document.addEventListener('click', function (e) {
+    const trigger = e.target.closest('.deep-dive-trigger');
+    if (!trigger) return;
+
+    // Safeguard: Prevent modal if they click a nested interactive element
+    if (e.target.closest('button, a, input, label')) return;
+
+    openDeepDive(trigger);
+});
+
+// --- KEYBOARD ACCESSIBILITY FOR DEEP DIVE ---
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+
+    const trigger = e.target.closest('.deep-dive-trigger');
+    if (!trigger) return;
+
+    e.preventDefault(); // Prevent spacebar from scrolling the page
+    openDeepDive(trigger);
+});
+
+// --- DEEP DIVE EXECUTION HELPER ---
+function openDeepDive(trigger) {
+    const contentNode = trigger.querySelector('.deep-dive-content');
+    if (!contentNode) return;
+
+    const title = trigger.getAttribute('data-deep-dive-title') || 'Scouting Report: Deep Dive';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'deep-dive-wrapper';
+
+    const body = document.createElement('div');
+    body.className = 'deep-dive-body';
+
+    const themeContainer = trigger.closest('[class*="theme-"]');
+    if (themeContainer) {
+        const themeClass = Array.from(themeContainer.classList).find(c => c.startsWith('theme-'));
+        if (themeClass) wrapper.classList.add(themeClass);
+    }
+
+    const clonedContent = contentNode.cloneNode(true);
+    clonedContent.classList.remove('hidden');
+
+    body.appendChild(clonedContent);
+    wrapper.appendChild(body);
+
+    // 🔥 ONLY add hint if content actually scrolls
+    requestAnimationFrame(() => {
+        if (body.scrollHeight > body.clientHeight) {
+            const scrollHint = document.createElement('div');
+            scrollHint.className = 'scroll-hint';
+            scrollHint.innerText = '⬇ SCROLL';
+            wrapper.appendChild(scrollHint);
+        }
+    });
+
+    openModal(wrapper, title);
+}
+
+/* ============================================================
+   PREMIUM ACCENT CARD ENGINE (Dynamic 3D Tilt & Glow)
+   ============================================================ */
+
+document.addEventListener('mousemove', (e) => {
+    const card = e.target.closest('.accent-card');
+    if (!card) return;
+
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    const rotateX = ((y - centerY) / centerY) * -6;
+    const rotateY = ((x - centerX) / centerX) * 6;
+
+    card.style.setProperty('--mouse-x', `${x}px`);
+    card.style.setProperty('--mouse-y', `${y}px`);
+
+    card.style.transform = 
+        `translateX(6px) translateY(-2px) scale(1.01) 
+         rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(0)`;
+});
+
+document.addEventListener('mouseout', (e) => {
+    const card = e.target.closest('.accent-card');
+    if (!card) return;
+
+    if (!e.relatedTarget || !card.contains(e.relatedTarget)) {
+        card.style.transform = "";
+    }
+});
+
+// Accessible Keyboard Parity (Delegated so it works on injected HTML)
+document.addEventListener('focusin', (e) => {
+    const card = e.target.closest('.accent-card');
+    if (card) card.style.transform = "translateX(6px) translateY(-2px) scale(1.01) translateZ(0)";
+});
+
+document.addEventListener('focusout', (e) => {
+    const card = e.target.closest('.accent-card');
+    if (card) card.style.transform = "";
+});
+
+/* ============================================================
+   TOOLTIP ENGINE (GLOBAL DELEGATION + SMART SHIFT)
+   ============================================================ */
+
+document.addEventListener('DOMContentLoaded', () => {
+
+    /* Accent Card Accessibility */
+    document.querySelectorAll('.accent-card').forEach(card => {
+        if (!card.hasAttribute('tabindex')) {
+            card.setAttribute('tabindex','0');
+        }
+    });
+
+    /* Tooltip DOM preparation */
+    document.querySelectorAll('abbr[data-tooltip], abbr[title]').forEach(abbr => {
+
+        if (abbr.hasAttribute('title')) {
+            const tooltipText = abbr.getAttribute('title');
+            abbr.setAttribute('data-tooltip', tooltipText);
+            abbr.removeAttribute('title');
+        }
+
+        abbr.setAttribute('tabindex','0');
+        abbr.setAttribute('aria-label', abbr.getAttribute('data-tooltip'));
+
+    });
+
+});
+
+/* ============================================================
+   GLOBAL TOOLTIP CONTROLLER
+   ============================================================ */
+
+let activeTooltip = null;
+let tooltipRAF = null;
+
+document.addEventListener('pointermove', (e) => {
+
+    const abbr = e.target.closest('abbr[data-tooltip]');
+
+    /* Pointer left tooltip */
+    if (!abbr) {
+
+        if (activeTooltip) {
+            activeTooltip.style.setProperty('--tooltip-parallax','0px');
+            activeTooltip.style.setProperty('--tooltip-glow-x','50%');
+            activeTooltip.style.setProperty('--tooltip-glow-y','50%');
+            activeTooltip.style.setProperty('--tooltip-shift-x','0px');
+            activeTooltip = null;
+        }
+
+        tooltipRAF = null;
+        return;
+    }
+
+    activeTooltip = abbr;
+
+    if (tooltipRAF) return;
+
+    tooltipRAF = requestAnimationFrame(() => {
+
+        const rect = abbr.getBoundingClientRect();
+
+        const container =
+            abbr.closest('.deep-dive-body') ||
+            document.body;
+
+        const containerRect = container.getBoundingClientRect();
+
+        /* ======================
+           Parallax
+        ====================== */
+
+        const x = (e.clientX - rect.left - rect.width / 2) / 10;
+
+        abbr.style.setProperty('--tooltip-parallax', `${x}px`);
+
+        /* ======================
+           Liquid glow tracking
+        ====================== */
+
+        let glowX = ((e.clientX - rect.left) / rect.width) * 100;
+        let glowY = ((e.clientY - rect.top) / rect.height) * 100;
+
+        glowX = Math.max(0, Math.min(100, glowX));
+        glowY = Math.max(0, Math.min(100, glowY));
+
+        abbr.style.setProperty('--tooltip-glow-x', `${glowX}%`);
+        abbr.style.setProperty('--tooltip-glow-y', `${glowY}%`);
+
+        /* ======================
+           Dynamic edge shift
+        ====================== */
+
+        let shiftX = 0;
+
+        const textContent =
+            abbr.getAttribute('data-tooltip') || "";
+
+        const estimatedWidth =
+            (textContent.length * 9) + 50;
+
+        const rightOverflow =
+            rect.right + estimatedWidth / 2 - containerRect.right;
+
+        const leftOverflow =
+            containerRect.left - (rect.left - estimatedWidth / 2);
+
+        if (rightOverflow > 0) shiftX -= rightOverflow;
+        if (leftOverflow > 0) shiftX += leftOverflow;
+
+        abbr.style.setProperty('--tooltip-shift-x', `${shiftX}px`);
+
+        /* ======================
+           Top edge flip
+        ====================== */
+
+        if (rect.top < 120) {
+            abbr.classList.add('tooltip-flip');
+        } else {
+            abbr.classList.remove('tooltip-flip');
+        }
+
+        tooltipRAF = null;
+
+    });
+
+});
+
+/* ============================================================
+   LIVE INTELLIGENCE FEED ROTATOR
+   ============================================================ */
+const intelFeed = document.getElementById('intelFeed');
+
+if (intelFeed) {
+    const intelMessages = [
+        "Tactical data actively monitored to reflect current European systems.",
+        "Pressing structures updated using latest Champions League match analysis.",
+        "Positional play models derived from elite academy methodologies.",
+        "Player role definitions calibrated against modern tactical frameworks.",
+        "Live scouting insights integrated from top European competitions."
+    ];
+
+    let intelIndex = 0;
+
+    setInterval(() => {
+        intelIndex = (intelIndex + 1) % intelMessages.length;
+        
+        intelFeed.classList.add('intel-fade');
+        
+        setTimeout(() => {
+            intelFeed.textContent = intelMessages[intelIndex];
+            intelFeed.classList.remove('intel-fade');
+        }, 250);
+
+    }, 5000);
+}
+
+/* ============================================================
+   HEADER 3D CURSOR-TRACKING EFFECT (MOBILE-AWARE)
+   ============================================================ */
+const brandWrapper = document.querySelector('.brand-header-wrapper');
+
+if (brandWrapper) {
+    const maxTilt = 8; // max degrees of rotation on X/Y
+    const mobileBreakpoint = 768; // px, disables tilt on smaller screens
+
+    const updateRotation = (e) => {
+        const rect = brandWrapper.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+
+        const rotateX = ((y - centerY) / centerY) * maxTilt;
+        const rotateY = ((x - centerX) / centerX) * maxTilt;
+
+        brandWrapper.style.transform = `rotateX(${-rotateX}deg) rotateY(${rotateY}deg)`;
+    };
+
+    const resetRotation = () => {
+        brandWrapper.style.transform = 'rotateX(0deg) rotateY(0deg)';
+    };
+
+    const handlePointerMove = (e) => {
+        if (window.innerWidth >= mobileBreakpoint) {
+            updateRotation(e);
+        }
+    };
+
+    const handlePointerLeave = () => {
+        resetRotation();
+    };
+
+    brandWrapper.addEventListener('pointermove', handlePointerMove);
+    brandWrapper.addEventListener('pointerleave', handlePointerLeave);
+    window.addEventListener('resize', resetRotation);
+}
+
+/* ============================================================
+   CINEMATIC GAME ENGINE CORE
+   (Lock Modal + Graduation + Audio + Confetti System)
+   ============================================================ */
+
+/* ---------------- GLOBAL STATE ---------------- */
+let ambientHum = null;
+let activeFadeInterval = null;
+let continuousConfettiInterval = null;
+let humTimeout = null; // 🔥 Tracks the whistle delay
+
+/* ==========================================
+   GRADUATION CEREMONY CONTROL
+   ========================================== */
+const CEREMONY_DURATION = 3500;
+let ceremonyUnlockTimeout = null;
+let graduationActive = false;
+let graduationAudio = null;
+
+/* ============================================================
+   AUDIO CORE (SAFE WRAPPER EXPECTED TO EXIST)
+   Depends on: playAcademySound, sounds
+   ============================================================ */
+
+function closeLockModal() {
+    const modal = document.getElementById('lock-modal-overlay');
+    if (!modal) return;
+
+    // 🔥 Kill pending hum if user closes modal before whistle finishes
+    if (humTimeout) {
+        clearTimeout(humTimeout);
+        humTimeout = null;
+    }
+
+    if (ambientHum) {
+        const steps = 20;
+        const duration = 500;
+        const stepTime = duration / steps;
+        let step = 0;
+        const startVol = ambientHum.volume;
+
+        if (activeFadeInterval) {
+            clearInterval(activeFadeInterval);
+            activeFadeInterval = null;
+        }
+
+        activeFadeInterval = setInterval(() => {
+            if (!ambientHum) {
+                clearInterval(activeFadeInterval);
+                activeFadeInterval = null;
+                return;
+            }
+
+            step++;
+            ambientHum.volume = Math.max(0, startVol * (1 - step / steps));
+
+            if (step >= steps) {
+                clearInterval(activeFadeInterval);
+                activeFadeInterval = null;
+                try { ambientHum.pause(); ambientHum.currentTime = 0; } catch {}
+                ambientHum = null;
+            }
+        }, stepTime);
+    }
+
+    modal.classList.remove('active');
+
+    const onEnd = (e) => {
+        if (e.target !== modal) return;
+        modal.classList.remove('visible');
+        modal.removeEventListener('transitionend', onEnd);
+    };
+
+    modal.addEventListener('transitionend', onEnd);
+}
+
+async function showLockModal(type) {
+    const modal = document.getElementById('lock-modal-overlay');
+    if (!modal) return;
+
+    // ==========================================
+    // CLEANUP
+    // ==========================================
+    if (humTimeout) {
+        clearTimeout(humTimeout);
+        humTimeout = null;
+    }
+
+    if (activeFadeInterval) {
+        clearInterval(activeFadeInterval);
+        activeFadeInterval = null;
+    }
+
+    // ==========================================
+    // HARD STOP OLD HUM (SAFE + COMPATIBLE)
+    // ==========================================
+    if (ambientHum) {
+        try {
+            const ctx = getAudioContext();
+
+            if (ambientHum._gainNode && ctx) {
+                const t = ctx.currentTime;
+
+                ambientHum._gainNode.gain.cancelScheduledValues(t);
+                ambientHum._gainNode.gain.setValueAtTime(
+                    ambientHum._gainNode.gain.value || 0.05,
+                    t
+                );
+                ambientHum._gainNode.gain.linearRampToValueAtTime(0, t + 0.2);
+            }
+
+            setTimeout(() => {
+                try {
+                    if (ambientHum._audioSource) {
+                        ambientHum._audioSource.disconnect();
+                    }
+                } catch {}
+
+                try {
+                    if (ambientHum._gainNode) {
+                        ambientHum._gainNode.disconnect();
+                    }
+                } catch {}
+
+                try {
+                    ambientHum.pause();
+                    ambientHum.currentTime = 0;
+                } catch {}
+
+                ambientHum = null;
+            }, 300);
+
+        } catch {
+            ambientHum = null;
+        }
+    }
+
+    const title = document.getElementById('lock-modal-title');
+    const body = document.getElementById('lock-modal-body');
+    const btn = document.getElementById('lock-modal-btn');
+
+    if (!btn) return;
+
+    btn.onclick = null;
+
+    // ==========================================
+    // CONTENT + ACTION
+    // ==========================================
+    if (type === 'academic') {
+        if (title) title.textContent = "Qualify for Pro";
+        if (body) body.textContent = "Pass Module 1 Final (14/15) to unlock";
+
+        btn.textContent = "Return to Hub";
+        btn.onclick = () => {
+            if (typeof closeLockModal === 'function') closeLockModal();
+        };
+
+    } else {
+        if (title) title.textContent = "Unlock Elite Tactics";
+        if (body) body.textContent = "Advanced scouting reports available";
+
+        btn.textContent = "Upgrade to Academy Pro";
+        btn.onclick = () => {
+
+            if (typeof academyProgress !== 'undefined') {
+                academyProgress.isPremiumUser = true;
+
+                if (typeof saveProgressToStorage === 'function') {
+                    saveProgressToStorage(academyProgress);
+                }
+            }
+
+            // 🎧 SNAPPY UI FX
+            if (typeof playAcademySound === 'function') {
+                playAcademySound('correct', {
+                    volume: 0.8,
+                    duration: 2500
+                });
+            }
+
+            if (typeof updateHubUI === 'function') {
+                updateHubUI();
+            }
+
+            if (typeof closeLockModal === 'function') {
+                closeLockModal();
+            }
+        };
+    }
+
+    // ==========================================
+    // SHOW MODAL
+    // ==========================================
+    modal.classList.add('visible');
+    requestAnimationFrame(() => modal.classList.add('active'));
+
+    // ==========================================
+    // AUDIO
+    // ==========================================
+    if (typeof playAcademySound === 'function') {
+        playAcademySound('whistle', { volume: 0.6 });
+    }
+
+    humTimeout = setTimeout(() => {
+        if (typeof playAcademySound === 'function') {
+            ambientHum = playAcademySound('correct', {
+                volume: 0.05,
+                loop: true
+            });
+        }
+    }, 1000);
+}
+
+/* ============================================================
+   CONFETTI SYSTEM (CONTINUOUS STORM EDITION)
+   ============================================================ */
+
+function launchConfetti(containerId = 'graduation-overlay') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const colors = ['gold', 'red', 'blue', 'green', 'white', 'purple'];
+    const fragment = document.createDocumentFragment();
+
+    for (let i = 0; i < 100; i++) {
+        const conf = document.createElement('div');
+        conf.className = `ikb-confetti ${colors[Math.floor(Math.random() * colors.length)]}`;
+        conf.style.left = `${Math.random() * 100}%`;
+        
+        const size = Math.random() * 16 + 12;
+        conf.style.width = `${size}px`;
+        conf.style.height = `${size}px`;
+
+        const duration = Math.random() * 2 + 1.5;
+        const delay = Math.random();
+
+        conf.style.animationDuration = `${duration}s`;
+        conf.style.animationDelay = `${delay}s`;
+
+        fragment.appendChild(conf);
+
+        setTimeout(() => {
+            if (conf && conf.parentNode) {
+                conf.remove();
+            }
+        }, (duration + delay) * 1000);
+    }
+    container.appendChild(fragment);
+}
+
+/* ============================================================
+   CINEMATIC TIMELINE ENGINE (CORE)
+   ============================================================ */
+
+const TimelineEngine = {
+    activeTimers: [],
+
+    clear() {
+        this.activeTimers.forEach(t => clearTimeout(t));
+        this.activeTimers = [];
+    },
+
+    wait(ms, fn) {
+        const id = setTimeout(fn, ms);
+        this.activeTimers.push(id);
+        return id;
+    }
+};
+
+/* ==========================================
+   DISMISS GRADUATION CEREMONY
+   ========================================== */
+function dismissGraduation() {
+    if (!graduationActive) return;
+    graduationActive = false;
+
+    if (ceremonyUnlockTimeout) {
+        clearTimeout(ceremonyUnlockTimeout);
+        ceremonyUnlockTimeout = null;
+    }
+
+    // Target ONLY the ceremony audio safely
+    if (graduationAudio) {
+        try { graduationAudio.pause(); } catch {}
+        try { graduationAudio.currentTime = 0; } catch {}
+        
+        // Remove from tracking to prevent ghost leaks
+        if (typeof activeClones !== 'undefined' && Array.isArray(activeClones)) {
+            const idx = activeClones.indexOf(graduationAudio);
+            if (idx > -1) {
+                activeClones.splice(idx, 1);
+            }
+        }
+        
+        graduationAudio = null;
+    }
+
+    if (typeof continuousConfettiInterval !== 'undefined' && continuousConfettiInterval) {
+        clearInterval(continuousConfettiInterval);
+        continuousConfettiInterval = null;
+    }
+
+    const overlay = document.getElementById('graduation-overlay');
+    if (overlay) {
+        overlay.querySelectorAll('.ikb-confetti').forEach(el => el.remove());
+        overlay.classList.remove('active');
+        overlay.classList.add('hidden');
+    }
+    document.body.classList.remove('modal-open');
+}
+
+/* ==========================================
+   SHOW GRADUATION CEREMONY
+   ========================================== */
+function showGraduationCeremony(modNum = 4) {
+
+    // Prevent duplicate launches
+    if (graduationActive) return;
+
+    const gradOverlay = document.getElementById('graduation-overlay');
+
+    if (!gradOverlay) {
+        console.error(
+            '[Graduation Overlay] #graduation-overlay not found'
+        );
+        return;
+    }
+
+    graduationActive = true;
+
+    if (typeof stopAllAudio === 'function') {
+        stopAllAudio();
+    }
+
+    if (
+        typeof FXTimeline !== 'undefined' &&
+        FXTimeline &&
+        typeof FXTimeline.clear === 'function'
+    ) {
+        FXTimeline.clear();
+    }
+
+    // ==========================================
+    // DYNAMIC THEME
+    // ==========================================
+    gradOverlay.classList.remove(
+        'theme-foundation',
+        'theme-pro',
+        'theme-tactician',
+        'theme-mogul'
+    );
+
+    if (modNum === 1) {
+        gradOverlay.classList.add('theme-foundation');
+    } else if (modNum === 2) {
+        gradOverlay.classList.add('theme-pro');
+    } else if (modNum === 3) {
+        gradOverlay.classList.add('theme-tactician');
+    } else {
+        gradOverlay.classList.add('theme-mogul');
+    }
+
+    // ==========================================
+    // SUBTITLE
+    // ==========================================
+    const subtitle = document.getElementById(
+        'graduation-subtitle'
+    );
+
+    if (subtitle) {
+        if (modNum === 1) {
+            subtitle.textContent = 'FOUNDATION MASTERED.';
+        } else if (modNum === 2) {
+            subtitle.textContent = 'PRO LEAGUES MASTERED.';
+        } else if (modNum === 3) {
+            subtitle.textContent = 'ELITE TACTICS VERIFIED.';
+        } else {
+            subtitle.textContent = 'BOARDROOM CONQUERED.';
+        }
+    }
+
+    // ==========================================
+    // CTA RESET
+    // ==========================================
+    const claimBtn =
+        document.getElementById('claim-badge-final');
+
+    if (claimBtn) {
+        claimBtn.classList.remove('reveal-cta');
+        claimBtn.classList.add('hidden-cta');
+    }
+
+    // ==========================================
+    // SHOW OVERLAY
+    // ==========================================
+    gradOverlay.classList.remove('hidden');
+    gradOverlay.classList.add('active');
+
+    document.body.classList.add('modal-open');
+
+    // ==========================================
+    // AUDIO
+    // ==========================================
+    console.log('[GRAD] Overlay launched');
+
+    graduationAudio = playAcademySound(
+        'correct',
+        {
+            volume: 0.8,
+            duration: CEREMONY_DURATION
+        }
+    );
+
+    console.log('[GRAD] playAcademySound returned:', graduationAudio);
+
+    // ==========================================
+    // CTA REVEAL
+    // ==========================================
+    const revealCTA = () => {
+
+        if (!graduationActive) return;
+
+        if (claimBtn) {
+            claimBtn.classList.remove(
+                'hidden-cta'
+            );
+
+            claimBtn.classList.add(
+                'reveal-cta'
+            );
+        }
+    };
+
+    ceremonyUnlockTimeout = setTimeout(
+        revealCTA,
+        CEREMONY_DURATION
+    );
+
+    // ==========================================
+    // SKIP BUTTON
+    // ==========================================
+    const skipBtn =
+        document.getElementById(
+            'skip-graduation-btn'
+        );
+
+    if (skipBtn) {
+        skipBtn.onclick = dismissGraduation;
+    }
+
+    // ==========================================
+    // PROCEED BUTTON
+    // ==========================================
+    if (claimBtn) {
+
+        claimBtn.onclick = () => {
+
+            // Only final academy module grants graduation
+            if (
+                modNum === 4 &&
+                typeof academyProgress !==
+                    'undefined'
+            ) {
+
+                academyProgress.isGraduated = true;
+
+                if (
+                    typeof saveProgressToStorage ===
+                    'function'
+                ) {
+                    saveProgressToStorage(
+                        academyProgress
+                    );
+                }
+
+                if (
+                    typeof applyMogulUIState ===
+                    'function'
+                ) {
+                    applyMogulUIState();
+                }
+            }
+
+            dismissGraduation();
+
+            // Route to correct exam lobby
+            const lobbyId =
+                `topic-module-${modNum}-exam-lobby`;
+
+            const lobby =
+                document.getElementById(
+                    lobbyId
+                );
+
+            if (lobby) {
+                showScreen(lobbyId);
+            } else {
+                console.warn(
+                    `[Graduation Overlay] Lobby not found: ${lobbyId}`
+                );
+            }
+        };
+    }
+
+    // ==========================================
+    // CLICK OUTSIDE DISMISS
+    // ==========================================
+    gradOverlay.onclick = (e) => {
+
+        if (e.target === gradOverlay) {
+            dismissGraduation();
+        }
+    };
+
+    // ==========================================
+    // CONFETTI
+    // ==========================================
+    if (typeof launchConfetti === 'function') {
+        launchConfetti();
+    }
+} // <--- This closes showGraduationCeremony
+
+/* ============================================================
+   FINAL ACADEMY GRADUATION
+   ============================================================ */
+function showFinalAcademyGraduation() {
+    console.log('[FINAL GRADUATION] Triggered');
+
+    if (typeof stopAllAudio === 'function') {
+        stopAllAudio();
+    }
+
+    if (
+        typeof FXTimeline !== 'undefined' &&
+        FXTimeline &&
+        typeof FXTimeline.clear === 'function'
+    ) {
+        FXTimeline.clear();
+    }
+
+    const overlay = document.getElementById(
+        'final-graduation-overlay'
+    );
+
+    if (!overlay) {
+        console.error(
+            '[FINAL GRADUATION] Overlay missing'
+        );
+        return;
+    }
+
+    overlay.classList.remove('hidden');
+    overlay.classList.toggle('active', true);
+
+    document.body.classList.add('modal-open');
+
+    if (typeof playAcademySound === 'function') {
+        playAcademySound('vogGraduated', {
+            volume: 1.0
+        });
+
+        playAcademySound('correct', {
+            volume: 0.4
+        });
+    }
+
+    /* ------------------------------------------
+       Continuous Confetti Storm
+       ------------------------------------------ */
+    if (
+        typeof continuousConfettiInterval !==
+            'undefined' &&
+        continuousConfettiInterval
+    ) {
+        clearInterval(continuousConfettiInterval);
+    }
+
+    launchConfetti('final-graduation-overlay');
+
+    continuousConfettiInterval = setInterval(() => {
+        launchConfetti(
+            'final-graduation-overlay'
+        );
+    }, 2000);
+
+    const btn = document.getElementById(
+        'enter-boardroom-btn'
+    );
+
+    if (btn) {
+        btn.onclick = () => {
+            closeFinalAcademyGraduation();
+
+            if (
+                document.getElementById(
+                    'boardroom-screen'
+                )
+            ) {
+                showScreen('boardroom-screen');
+            }
+        };
+    }
+}
+
+function closeFinalAcademyGraduation() {
+    const overlay = document.getElementById(
+        'final-graduation-overlay'
+    );
+
+    if (overlay) {
+        overlay
+            .querySelectorAll('.ikb-confetti')
+            .forEach(el => el.remove());
+
+        overlay.classList.remove('active');
+        overlay.classList.add('hidden');
+    }
+
+    if (
+        typeof continuousConfettiInterval !==
+            'undefined' &&
+        continuousConfettiInterval
+    ) {
+        clearInterval(continuousConfettiInterval);
+        continuousConfettiInterval = null;
+    }
+
+    document.body.classList.remove(
+        'modal-open'
+    );
+
+    if (typeof stopAllAudio === 'function') {
+        stopAllAudio();
+    }
+}
+
+
+/* ============================================================
+   MOGUL ACTIVATION ENGINE
+   Applies global UI state based on graduation status
+   ============================================================ */
+
+function applyMogulUIState() {
+    if (typeof academyProgress !== 'undefined' && academyProgress.isGraduated) {
+        if (!document.body.classList.contains('body-mogul-active')) {
+            document.body.classList.add('body-mogul-active');
+            console.log("💎 MOGUL GLOW ACTIVATED");
+        }
+    } else {
+        document.body.classList.remove('body-mogul-active');
+    }
+}
+
+/* ============================================================
+   GLOBAL EVENT DIRECTOR (CORE ENGINE)
+   ============================================================ */
+
+const EventDirector = {
+    currentEvent: null,
+
+    play(eventName, config = {}) {
+        this.stop();
+        this.currentEvent = eventName;
+
+        switch (eventName) {
+            case "graduation":
+                this.runGraduation(config);
+                break;
+            case "goal":
+                this.runGoal(config);
+                break;
+            case "unlock":
+                this.runUnlock(config);
+                break;
+            default:
+                console.warn("Unknown event:", eventName);
+        }
+    },
+
+    stop() {
+        if (typeof TimelineEngine !== 'undefined') TimelineEngine.clear();
+        if (typeof stopAllAudio === 'function') stopAllAudio();
+        
+        if (typeof ambientHum !== 'undefined' && ambientHum) {
+            try { ambientHum.pause(); ambientHum.currentTime = 0; } catch {}
+            ambientHum = null;
+        }
+
+        if (typeof continuousConfettiInterval !== 'undefined' && continuousConfettiInterval) {
+            clearInterval(continuousConfettiInterval);
+            continuousConfettiInterval = null;
+        }
+
+        if (document.body.classList.contains('modal-open')) {
+            document.body.classList.remove('modal-open');
+        }
+
+        this.currentEvent = null;
+    },
+
+    runGraduation() {
+        showFinalAcademyGraduation();
+    },
+
+    runGoal() {
+        if (typeof playAcademySound === 'function') {
+            playAcademySound('correct', { volume: 1.0 });
+        }
+    },
+
+    runUnlock() {
+        if (typeof playAcademySound === 'function') {
+            playAcademySound('whistle', { volume: 0.5 });
+        }
+    }
+};
+
+/* ==========================================
+   GLOBAL EVENT LISTENERS
+   ========================================== */
+
+// Global Animation Cleanup: Removes the burst class when the animation finishes
+document.addEventListener('animationend', (e) => {
+    if (e.target && e.target.classList.contains('exam-ready-burst')) {
+        e.target.classList.remove('exam-ready-burst');
+    }
+});
+
+// ============================================================
+// --- APP INITIALIZATION ---
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("⚡ ACADEMY SYSTEM ONLINE");
+    
+    const savedData = loadProgressFromStorage();
+    if (savedData) {
+        academyProgress = savedData;
+    }
+    
+    updateHubUI();
+    applyMogulUIState(); // 🔥 Applies glow if user is a returning Mogul
+});
+
+
