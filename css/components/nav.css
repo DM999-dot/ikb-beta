@@ -1,0 +1,42 @@
+                    /* THE BADGE ALTAR */
+.badge-bar {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 35px !important;
+  margin: 20px auto;
+  padding: 15px 40px;
+  background: rgba(15, 18, 30, 0.8) !important;
+  backdrop-filter: blur(25px);
+  border-radius: 50px; /* Pill Shape */
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  width: fit-content;
+}
+
+/* THE BADGE ITEMS */
+.badge-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: transform 0.3s ease, filter 0.3s ease !important;
+  cursor: pointer;
+}
+
+.badge-item span {
+  font-weight: 900 !important; /* Bold Look from Image 12 */
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.75rem;
+}
+
+/* HOVER EFFECT: Adds the missing interaction */
+.badge-item:hover {
+  transform: translateY(-3px) scale(1.1) !important;
+  filter: brightness(1.3);
+}
+
+/* ACTIVE IDENTITY GLOWS (Linked to JS classes) */
+.active-foundation { color: var(--foundation-green) !important; text-shadow: var(--glow-foundation); }
+.active-pro        { color: var(--pro-blue) !important; text-shadow: var(--glow-pro); }
+.active-tactician  { color: var(--tactician-gold) !important; text-shadow: var(--glow-tactician); }
+.active-mogul      { color: var(--mogul-purple) !important; text-shadow: var(--glow-mogul); }

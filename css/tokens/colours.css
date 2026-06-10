@@ -1,0 +1,15 @@
+            /* DESIGN TOKENS: ELITE ACADEMY BRANDING */
+:root {
+  /* Core Colors */
+  --foundation-green: #4caf50;
+  --pro-blue: #2196f3;
+  --tactician-gold: #ffcc00;
+  --mogul-purple: #9c27b0;
+  --exam-red: #ff6b6b;
+
+  /* Atmospheric Identity Glows */
+  --glow-foundation: 0 0 15px rgba(76, 175, 80, 0.8);
+  --glow-pro: 0 0 15px rgba(33, 150, 243, 0.8);
+  --glow-tactician: 0 0 15px rgba(255, 204, 0, 0.8);
+  --glow-mogul: 0 0 15px rgba(156, 39, 176, 0.8);
+}

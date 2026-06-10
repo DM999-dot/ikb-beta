@@ -1,0 +1,37 @@
+                    /* ELITE CARD COMPONENT */
+.topic-card {
+  background: rgba(15, 18, 30, 0.65) !important;
+  backdrop-filter: blur(20px);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 25px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+
+/* IDENTITY SIDEBARS & HOVER GLOWS */
+.level-foundation { border-left: 10px solid var(--foundation-green) !important; }
+.level-foundation:hover { box-shadow: 0 0 30px rgba(76, 175, 80, 0.5) !important; transform: translateY(-8px); }
+
+.level-pro { border-left: 10px solid var(--pro-blue) !important; }
+.level-pro:hover { box-shadow: 0 0 30px rgba(33, 150, 243, 0.5) !important; transform: translateY(-8px); }
+
+.level-elite { border-left: 10px solid var(--tactician-gold) !important; }
+.level-elite:hover { box-shadow: 0 0 30px rgba(255, 204, 0, 0.5) !important; transform: translateY(-8px); }
+
+.level-business { border-left: 10px solid var(--mogul-purple) !important; }
+.level-business:hover { box-shadow: 0 0 30px rgba(156, 39, 176, 0.5) !important; transform: translateY(-8px); }
+
+                    /* ADVANCED MODULE (PREMIUM) IDENTITY */
+.topic-card.locked:not([class*="level-"]) {
+  border: 2px solid rgba(255, 255, 255, 0.4) !important;
+  background: rgba(15, 18, 30, 0.8) !important;
+}
+
+/* White/Silver Hover Glow for Premium */
+.topic-card.locked:not([class*="level-"]):hover {
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.4) !important;
+  transform: translateY(-8px) scale(1.02) !important;
+  border-color: #ffffff !important;
+}

@@ -1,0 +1,84 @@
+/* ========================================
+   ELITE ACADEMY - MASTER RECONSTRUCTION 
+   ======================================== */
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 20px;
+    background: radial-gradient(circle, rgba(15, 18, 30, 0.4) 0%, rgba(15, 18, 30, 0.9) 90%), 
+                url('https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=1200') no-repeat center center fixed !important;
+    background-size: cover !important;
+    color: #ffffff;
+    margin: 0;
+    min-height: 100vh;
+}
+
+/* === 1. CORE GLASS CONTAINERS === */
+.topic-card, .lesson-card, .scouting-card, .quiz-card, .pro-insight-box, .lesson-header-container {
+    background: rgba(15, 18, 30, 0.65) !important;
+    backdrop-filter: blur(25px);
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 25px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* === 2. NAVIGATION & BADGE ALTAR === */
+.badge-bar {
+    display: flex !important; justify-content: center; gap: 35px;
+    margin: 20px auto; padding: 15px 40px; background: rgba(15, 18, 30, 0.8) !important;
+    border-radius: 50px; border: 1.5px solid rgba(255, 255, 255, 0.15); width: fit-content;
+}
+.badge-item span { font-weight: 900 !important; text-transform: uppercase; letter-spacing: 1px; }
+
+.back-btn, .sub-back-btn {
+    display: inline-flex !important; align-items: center; gap: 10px;
+    padding: 10px 30px !important; border-radius: 50px !important;
+    background: rgba(15, 18, 30, 0.7) !important; border: 1.5px solid rgba(255, 255, 255, 0.3);
+    color: white !important; font-weight: 900; cursor: pointer; text-transform: uppercase;
+}
+.back-btn:hover { transform: translateX(-8px) scale(1.05); box-shadow: 0 0 15px rgba(255,255,255,0.2); }
+
+/* === 3. MODULE GATEWAY IDENTITIES & GLOWS === */
+.level-foundation { border-left: 10px solid #4caf50 !important; border-color: #4caf50 !important; }
+.level-foundation:hover { box-shadow: 0 0 35px rgba(76, 175, 80, 0.6) !important; transform: translateY(-8px); }
+#badge-foundation.active-foundation { color: #4caf50 !important; text-shadow: 0 0 15px #4caf50; }
+
+.level-pro { border-left: 10px solid #2196f3 !important; border-color: #2196f3 !important; }
+.level-pro:hover { box-shadow: 0 0 35px rgba(33, 150, 243, 0.6) !important; transform: translateY(-8px); }
+#badge-pro.active-pro { color: #2196f3 !important; text-shadow: 0 0 15px #2196f3; }
+
+.level-elite { border-left: 10px solid #ffcc00 !important; border-color: #ffcc00 !important; }
+.level-elite:hover { box-shadow: 0 0 35px rgba(255, 204, 0, 0.6) !important; transform: translateY(-8px); }
+#badge-tactics.active-tactician { color: #ffcc00 !important; text-shadow: 0 0 15px #ffcc00; }
+
+.level-business { border-left: 10px solid #9c27b0 !important; border-color: #9c27b0 !important; }
+.level-business:hover { box-shadow: 0 0 35px rgba(156, 39, 176, 0.6) !important; transform: translateY(-8px); }
+#badge-mogul.active-mogul { color: #9c27b0 !important; text-shadow: 0 0 15px #9c27b0; }
+
+/* === 4. THE EXAM SYSTEM (RED) === */
+.level-exam { border: 2px solid #ff6b6b !important; border-left: 10px solid #ff6b6b !important; }
+.level-exam:hover { box-shadow: 0 0 30px rgba(255, 107, 107, 0.5) !important; transform: translateY(-8px); }
+.level-exam h3, .level-exam p, .level-exam .card-badge { color: #ff6b6b !important; }
+
+/* === 5. INTERACTIVE POP ENGINE (THE FLASH) === */
+.quiz-opt-btn {
+    background: rgba(255, 255, 255, 0.08) !important; border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px; padding: 20px; font-weight: 700; color: white; cursor: pointer;
+}
+.topic-card:active::after, .lesson-card:active::after, .quiz-opt-btn:active::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: #ffffff !important; opacity: 0; z-index: 9999;
+    pointer-events: none; animation: popFlash 0.25s ease-out;
+}
+@keyframes popFlash { 0% { opacity: 0; } 50% { opacity: 0.7; } 100% { opacity: 0; } }
+
+/* === 6. LESSON HEADER BOX === */
+.lesson-header-container { text-align: center; border: 1px solid rgba(255,255,255,0.2) !important; max-width: 850px; margin: 0 auto 30px auto; }
+.level-badge-pill { display: inline-block; padding: 4px 15px; border-radius: 50px; font-size: 0.7rem; font-weight: 900; margin-bottom: 10px; color: white; }
+.foundation-pill { background: #4caf50; } .pro-pill { background: #2196f3; }

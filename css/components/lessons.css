@@ -1,0 +1,218 @@
+/* ==========================================
+   1. ELITE GLOW SYSTEM (Headers & Pills)
+   ========================================== */
+
+.foundation-pill {
+    display: inline-block;
+    background: transparent;
+    border: 2px solid #4caf50;
+    color: #4caf50;
+    padding: 2px 12px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+}
+
+.foundation-title {
+    color: #4caf50 !important;
+    font-size: 2.2rem;
+    font-weight: 900;
+    margin-top: 10px;
+    text-shadow: 0 0 15px rgba(76, 175, 80, 0.8), 0 0 30px rgba(76, 175, 80, 0.4);
+    letter-spacing: -1px;
+}
+
+/* ==========================================
+   2. DEAD CENTER ALIGNMENT & CONTAINERS
+   ========================================== */
+
+.topic-screen {
+    display: none; /* ESSENTIAL: Hides lessons until clicked */
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    padding: 40px 0;
+}
+
+.lesson-header-container {
+    width: 100%;
+    max-width: 850px; 
+    text-align: center;
+    background: rgba(25, 30, 45, 0.8);
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* THE ELITE FLOATING BOX */
+.lesson-card {
+    background: rgba(25, 30, 45, 0.95) !important;
+    max-width: 850px;
+    width: 90%;
+    margin: 0 auto !important;
+    padding: 30px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+    position: relative; /* Essential for the Flash Effect */
+    overflow: hidden;    /* Keeps the Flash inside the box */
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* THE GREEN GLOW HOVER */
+.lesson-card:hover {
+    transform: translateY(-5px);
+    border-color: #4caf50 !important; /* Pure Foundation Green */
+    box-shadow: 0 0 30px rgba(76, 175, 80, 0.3), 0 30px 60px rgba(0, 0, 0, 0.9);
+}
+
+/* THE WHITE FLASH SHIMMER */
+.lesson-card::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+        to right, 
+        rgba(255, 255, 255, 0) 0%, 
+        rgba(255, 255, 255, 0.15) 50%, 
+        rgba(255, 255, 255, 0) 100%
+    );
+    transform: skewX(-25deg);
+    transition: 0.7s;
+}
+
+.lesson-card:hover::after {
+    left: 150%; /* Moves the light beam across the whole card */
+}
+
+.lesson-card img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* ==========================================
+   3. GRID & INTERACTIVE DEFINITIONS
+   ========================================== */
+
+.abbrev-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 15px !important;
+    width: 100% !important;
+    margin-top: 25px;
+}
+
+.abbrev-grid div {
+    background: rgba(25, 30, 45, 0.9) !important;
+    padding: 15px !important;
+    border-radius: 8px !important;
+    position: relative;
+    border-left: 4px solid #4caf50 !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+}
+
+.abbrev-grid div:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.pro-insight-box {
+    background: rgba(20, 40, 20, 0.8) !important;
+    border-left: 5px solid #4caf50 !important;
+    padding: 12px 20px !important;
+    margin-top: 25px !important;
+    border-radius: 4px !important;
+    display: inline-block !important;
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.2);
+}
+
+/* ==========================================
+   4. NAVIGATION BAR & BUTTONS
+   ========================================== */
+
+.lesson-nav-bar {
+    display: flex !important;
+    justify-content: space-between !important;
+    width: 90% !important;
+    max-width: 850px !important;
+    margin: 0 auto 20px auto !important;
+}
+
+.back-btn, .next-btn {
+    background: #191e2d !important;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    padding: 10px 22px !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+    font-size: 0.8rem !important;
+    letter-spacing: 1px !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    text-transform: uppercase !important;
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+}
+
+.back-btn:hover {
+    border-color: white !important;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3) !important;
+}
+
+.next-btn {
+    border: 1px solid #4caf50 !important;
+    color: #4caf50 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+.next-btn:hover {
+    background: rgba(76, 175, 80, 0.1) !important;
+    box-shadow: 0 0 20px rgba(76, 175, 80, 0.5) !important;
+    border-color: #4caf50 !important;
+    transform: translateY(-2px);
+}
+
+/* ==========================================
+   5. GLOBAL FIXES (No Click Flash)
+   ========================================== */
+
+* {
+    -webkit-tap-highlight-color: transparent;
+    outline: none !important;
+}
+                    /* CANVA PITCH RESTORATION */
+.pitch-container {
+    width: 100%;
+    min-height: 400px; /* Forces the box to stay open for the diagram */
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    margin: 20px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px dashed rgba(255, 255, 255, 0.1); /* Temporary guide line */
+}
+
+/* Fix for naming consistency in Next Buttons */
+.next-btn-text {
+    display: inline;
+}
+
+@media (max-width: 600px) {
+    .next-btn-text { display: none; } /* On mobile, only shows 'NEXT ->' */
+}
